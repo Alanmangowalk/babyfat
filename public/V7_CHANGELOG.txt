@@ -1,0 +1,29 @@
+BabyFat V7 Full Stack
+
+視覺
+- 住宿頁改用 6 張已確認的 AI 商攝優化圖
+- 住宿頁新增獨立 Hero 主視覺並降低圖片重複
+- Footer 改為精簡單層資訊
+- Mobile menu 只保留主要導覽
+
+品牌
+- 關於雪胖改成三位代表教練加 Snow Crew 教練陣容
+- 不再讓前台看起來只有三位教練
+- 新增合作邀約頁 分教練加入與異業合作
+
+功能
+- 預約表單送出後寫入 GAS Google Sheets
+- 自動產生預約編號
+- 純滑雪課直接產生 24 小時付款期限
+- 有住宿 攝影 接駁時先進入服務確認 再由後台開放付款
+- 我的預約可查詢即時狀態
+- 可回填匯款末五碼
+- 合作邀約寫入 Partnerships 工作表
+- 雪季日期限制 2026-12-15 至 2027-04-30 並可由 Settings 調整
+- 四語切換 繁中 简中 日本語 English
+- system-check.html 可確認 GAS 連線
+
+部署前
+1 請先部署 backend/Code.gs 為 Apps Script Web App
+2 將 exec 網址填入 assets/js/config.js 的 GAS_WEB_APP_URL
+3 再將網站上傳 Cloudflare
