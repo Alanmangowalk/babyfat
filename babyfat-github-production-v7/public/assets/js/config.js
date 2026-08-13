@@ -1,0 +1,9 @@
+window.BABYFAT_CONFIG={
+  GAS_WEB_APP_URL:"https://script.google.com/macros/s/AKfycbxGUbFbAjcaHoQebNL-mnMOTRV1uLkeNogy5_ojZ36_S9ruB7H-JO1wFZ5xAuYsoiWYKw/exec",
+  FALLBACK:{
+    seasonStart:"2026-12-15",seasonEnd:"2027-04-30",paymentHours:24,
+    prices:{yuzawa:{groupHalf:2500,groupFull:4000,privateHalf:10000,privateFull:15000},karuizawa:{groupHalf:3000,groupFull:4500,privateHalf:12000,privateFull:17000}},
+    stayRoomTwd:6500,photoTwd:13000,
+    shuttle:{none:0,station:0,naeba:0,tashiro:0,kagura:0,kandatsu:3500,iwappara:5000,ishiuchi:6000}
+  }
+};
