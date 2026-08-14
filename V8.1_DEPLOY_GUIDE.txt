@@ -1,0 +1,49 @@
+BabyFat V8.1 正式部署順序
+
+【A. 如果 V8 尚未部署】
+1. Cloudflare 建立 D1：babyfat-production
+2. 複製 Database ID，貼進 wrangler.jsonc 的 database_id
+3. D1 Console 依序執行 migrations/0001_init.sql、migrations/0002_v81_courses.sql
+4. 將本資料夾「裡面的內容」放到 GitHub repo 根目錄，不要再多包一層資料夾
+5. Commit 到 main，等待 Cloudflare Git 整合自動部署
+6. 開啟正式網址 /api/health，確認 version 為 8.1
+7. 更新 GAS：使用 BabyFat-V8.1-GAS-Sync 的 Code.gs 完整覆蓋現有 Apps Script
+8. Apps Script：部署 > 管理部署 > 編輯 > 新版本 > 部署；保持原本 /exec URL 不變
+9. 回 Google Sheet 重新整理，執行 BabyFat 系統 > V8.1 修正後台欄位
+10. 執行 BabyFat 系統 > V8 設定 D1 同步，輸入正式 Worker 網址，複製系統產生的同步 Token
+11. Cloudflare Worker > Settings > Variables and Secrets > Add，新增 Secret：SHEET_SYNC_TOKEN，值貼上剛才的 Token，儲存並 Deploy
+12. 回 Google Sheet，依序執行：V8 測試 D1 連線 > V8 同步設定到 D1 > V8 匯入現有預約到 D1 > V8 安裝雙向同步
+13. 執行「重新整理你好同學媒合」確認後台媒合表正常
+
+【B. 如果 V8 已經部署過】
+1. 不要重建 D1
+2. 只執行 migrations/0002_v81_courses.sql
+3. 覆蓋 GitHub 為 V8.1 並 Commit main
+4. 更新 GAS V8.1：完整覆蓋 Code.gs > 管理部署 > 編輯 > 新版本 > 部署
+5. 回 Sheet 執行 V8.1 修正後台欄位
+6. 若 V8 同步 Token 已設定，保留原 Token；再執行 V8 同步設定到 D1、重新整理你好同學媒合
+
+【正式上線前測試】
+- 成人 1–2 人：初雪萌新小團班 / 你好同學班 / 獨自升級專屬包班
+- 親子 1–4 人：只推薦獨自升級專屬包班
+- 親子 5–6 人：獨自升級專屬包班 / 雙教練專屬包班
+- 成人 5 人：可選初雪萌新 / 獨自升級 / 雙教練
+- 6 人：獨自升級 / 雙教練
+- 7–8 人：雙教練專屬包班
+- 9 人以上：轉 LINE 客服
+- 我的預約：只輸入預約編號可查；只輸入 Email 也可查
+- 聯絡資料：Email / 手機 / LINE 都必填，並需確認已加入官方 LINE
+- 預約成功：明確顯示正式預約編號，可一鍵帶入 LINE
+- 全日 24H 延時：付款回填符合資格後，提示至 LINE 回傳並申請免費延時 1 小時
+- 住宿：許緣完整中文資訊、地址、價格、房型、接駁可見
+- 攝影：SnowSurfStudio 作品連結可直接開啟
+
+【24H 延時的實務起算】
+單純滑雪課：自建立預約後的付款期限內完成全額匯款。
+若同時申請住宿 / 攝影 / 需確認接駁，需先確認最終服務內容與金額；系統從開放付款後計算 24 小時，避免因 BabyFat 審核時間讓客人失去優惠。
+
+【重要】
+- 不重建原 Google Sheet
+- 不需重新輸入既有銀行資料；執行「V8 同步設定到 D1」即可同步
+- 原 Apps Script /exec 網址保持不變
+- D1 是官網交易主資料庫，Google Sheet 是營運鏡像後台

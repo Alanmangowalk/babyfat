@@ -1,9 +1,19 @@
 window.BABYFAT_CONFIG={
-  GAS_WEB_APP_URL:"https://script.google.com/macros/s/AKfycbxGUbFbAjcaHoQebNL-mnMOTRV1uLkeNogy5_ojZ36_S9ruB7H-JO1wFZ5xAuYsoiWYKw/exec",
+  API_BASE:"",
+  SOCIAL:{
+    lineId:"@572opdeh",
+    lineProfileUrl:"https://line.me/R/ti/p/%40572opdeh",
+    instagramUrl:"https://www.instagram.com/babyfat_snowteam/",
+    // Public search is used until the exact Facebook Page URL is confirmed.
+    facebookUrl:"https://www.facebook.com/search/top?q=BabyFat%E9%9B%AA%E8%83%96%E6%95%99%E7%B7%B4%E5%9C%98",
+    phone:"0913172857",
+    email:"mangowalkers@gmail.com"
+  },
   FALLBACK:{
     seasonStart:"2026-12-15",seasonEnd:"2027-04-30",paymentHours:24,
-    prices:{yuzawa:{groupHalf:2500,groupFull:4000,privateHalf:10000,privateFull:15000},karuizawa:{groupHalf:3000,groupFull:4500,privateHalf:12000,privateFull:17000}},
+    prices:{yuzawa:{groupHalf:2500,groupFull:4000,shareHalf:8000,shareFull:13000,privateHalf:10000,privateFull:15000,dualCoachHalf:10000,dualCoachFull:15000},karuizawa:{groupHalf:3000,groupFull:4500,shareHalf:10000,shareFull:15000,privateHalf:12000,privateFull:17000,dualCoachHalf:12000,dualCoachFull:17000}},privateExtraPerson:1000,seasonPhases:[{key:"early_low",label:"早鳥淡季",start:"2026-12-15",end:"2027-01-05"},{key:"peak",label:"旺季",start:"2027-01-06",end:"2027-03-05"},{key:"tail_low",label:"尾聲淡季",start:"2027-03-06",end:"2027-04-30"}],
     stayRoomTwd:6500,photoTwd:13000,
-    shuttle:{none:0,station:0,naeba:0,tashiro:0,kagura:0,kandatsu:3500,iwappara:5000,ishiuchi:6000}
+    shuttle:{none:0,station:0,naeba:0,tashiro:0,kagura:0,kandatsu:3500,iwappara:5000,ishiuchi:6000},
+    contact:{lineId:"@572opdeh",instagramUrl:"https://www.instagram.com/babyfat_snowteam/",facebookUrl:"https://www.facebook.com/search/top?q=BabyFat%E9%9B%AA%E8%83%96%E6%95%99%E7%B7%B4%E5%9C%98",phone:"0913172857",email:"mangowalkers@gmail.com"}
   }
 };

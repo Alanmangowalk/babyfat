@@ -1,7 +1,26 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "babyfatsnowteam",
+  "main": "src/worker.js",
   "compatibility_date": "2026-08-14",
   "assets": {
-    "directory": "./public"
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "babyfat-production",
+      "database_id": "d99bd18e-fd92-466d-819e-d28a6a2279ef",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "GAS_SYNC_URL": "https://script.google.com/macros/s/AKfycbxGUbFbAjcaHoQebNL-mMOTRV1uLkeNogy5_ojZ36_S9ruB7H-JO1wFZ5xAuYsoiWYKw/exec"
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
   }
 }

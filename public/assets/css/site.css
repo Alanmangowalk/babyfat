@@ -27,3 +27,86 @@
 .system-card{max-width:760px;margin:auto;border:1px solid var(--line);padding:28px}.system-row{display:flex;justify-content:space-between;gap:20px;padding:13px 0;border-bottom:1px solid var(--line);font-size:12px}.system-row:last-child{border-bottom:0}
 @media(max-width:1050px){.wrap{width:min(var(--max),calc(100% - 40px))}.navlinks{display:none}.mine,.lang,.nav-actions>.btn{display:none}.menu-btn{display:block}.split-copy,.family-grid,.feature-grid,.stay-grid,.trust-grid,.info-grid,.crew-panel{grid-template-columns:1fr;gap:38px}.course-row{grid-template-columns:1fr 1.1fr}.price-list{grid-column:2}.booking-shell{grid-template-columns:1fr}.summary{position:relative;top:0}.footer-line{grid-template-columns:1fr auto}.footer-contact{grid-column:1/-1;text-align:left}.addon-cards{grid-template-columns:1fr}.core-grid{grid-template-columns:1fr 1fr}.lodge-gallery{grid-template-columns:1.2fr 1fr;grid-template-rows:310px 310px 310px}.lodge-gallery figure:first-child{grid-row:1/3}.lodge-gallery figure:nth-child(5){grid-column:1/-1}.lookup-form{grid-template-columns:1fr 1fr}.lookup-form .btn{grid-column:1/-1}.receipt-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:680px){body{padding-bottom:66px}.wrap{width:calc(100% - 28px)}.header{height:61px}.logo img{width:38px;height:38px}.logo-word{font-size:18px}.logo small{display:none}.mobile-menu{padding-top:78px}.mobile-menu a{font-size:25px}.hero{min-height:82svh}.hero img{object-position:center 61%}.hero:after{background:linear-gradient(0deg,rgba(3,18,34,.91),rgba(3,18,34,.32) 62%,rgba(3,18,34,.05))}.hero-inner{min-height:82svh;display:flex;flex-direction:column;justify-content:flex-end;padding:105px 0 43px}.hero h1{font-size:49px}.hero p{font-size:13px;max-width:94%}.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions .btn{font-size:11px;padding:0 8px}.hero-note{display:none}.factbar-inner{grid-template-columns:1fr}.fact{border-right:0;border-bottom:1px solid var(--line)}.section{padding:64px 0}.section.slim{padding:50px 0}.display{font-size:40px}.split-copy h2{font-size:37px}.course-row{display:block;padding:25px 0}.course-row h3{font-size:27px}.course-row p{font-size:12px;margin-top:14px}.price-list{margin-top:19px}.area-grid{grid-template-columns:1fr}.area-card{height:460px}.area-copy{left:20px;right:20px;bottom:20px}.area-copy h3{font-size:35px}.family-photo,.feature-photo{height:430px}.family-copy h2,.feature-copy h2{font-size:39px}.stay-photo{height:420px}.stay-copy h2{font-size:39px}.stay-price{font-size:37px}.trust-grid h2{font-size:39px}.page-hero{min-height:53svh}.page-hero-inner{padding:92px 0 32px}.page-hero h1{font-size:41px;line-height:1.07;max-width:94%}.page-hero p{font-size:12px;max-width:94%;margin-bottom:0}.areas-hero img{object-position:center 24%}.lodge-hero{min-height:66svh}.lodge-hero img{object-position:center center}.lodge-gallery{grid-template-columns:1fr 1fr;grid-template-rows:300px 220px 220px}.lodge-gallery figure:first-child{grid-column:1/-1;grid-row:auto}.lodge-gallery figure:nth-child(5){grid-column:auto}.addon-cards{grid-template-columns:1fr}.core-grid{grid-template-columns:1fr}.core-card{min-height:auto}.crew-panel img{height:400px}.crew-stats{grid-template-columns:1fr}.crew-stat:nth-child(odd),.crew-stat:nth-child(even){padding:13px 0;border-right:0}.coop-cta{padding:36px 24px}.field-grid,.coop-form-grid{grid-template-columns:1fr}.form-step h2{font-size:34px}.booking-hero{padding:98px 0 31px}.booking-hero h1{font-size:39px}.summary{padding:21px}.lookup-form{grid-template-columns:1fr}.receipt-grid{grid-template-columns:1fr}.compact-footer{padding:28px 0 25px}.footer-line{grid-template-columns:1fr}.footer-links{gap:10px 15px}.footer-contact{text-align:left}.footer-bottom{display:block;line-height:1.8}.mobile-bar{display:grid;position:fixed;z-index:110;left:0;right:0;bottom:0;grid-template-columns:.9fr 1.1fr;gap:7px;background:#fff;padding:6px 9px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -7px 28px rgba(7,31,59,.13)}.mobile-bar .btn{min-height:44px;font-size:11px;padding:0 8px}.toast{bottom:78px;left:14px;right:14px;text-align:center}.system-row{display:grid;gap:3px}}
+
+.sync-box{display:none;margin:0 0 18px;padding:15px 18px;border:1px solid #bdd3e2;background:#eef6fb;color:#173957;font-size:14px;line-height:1.7}
+.sync-box.show{display:block}
+.success-box.show{border:1px solid #bddccc;background:#f3faf6}
+.success-lead{font-size:15px;color:#355b48}
+.booking-code{display:flex;gap:14px;align-items:center;margin:14px 0;padding:13px 15px;background:#fff;border:1px solid #d8e8df}
+.booking-code span{font-size:12px;color:#708177;letter-spacing:.08em}
+.booking-code b{font-size:20px;color:#071f3b;letter-spacing:.04em}
+
+.lookup-single{grid-template-columns:minmax(0,1fr) auto;max-width:780px}
+.lookup-single input{min-height:52px;font-size:16px}
+.lookup-help{margin-top:10px;color:#718295;font-size:13px}
+.booking-matches{display:none;margin:18px 0 24px;border-top:1px solid #d9e4ec}
+.booking-matches.show{display:block}
+.match-title{padding:16px 0 10px;font-size:13px;color:#607286}
+.booking-match{width:100%;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:16px 4px;border:0;border-bottom:1px solid #d9e4ec;background:transparent;text-align:left;cursor:pointer}
+.booking-match span{display:flex;flex-direction:column;gap:5px}
+.booking-match b{font-size:16px;color:#071f3b}
+.booking-match small{font-size:12px;color:#75869a}
+.booking-match em{font-style:normal;font-size:12px;color:#e56f1f;white-space:nowrap}
+@media(max-width:700px){
+  .lookup-single{grid-template-columns:1fr}
+  .lookup-single .btn{width:100%}
+  .booking-match{align-items:flex-start}
+}
+
+
+/* ===== BabyFat V8 service/contact layer ===== */
+.footer-contact{display:flex!important;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.footer-contact a{color:inherit;text-decoration:none;opacity:.88}
+.footer-contact a:hover{opacity:1;color:var(--orange)}
+.line-nav{font-size:12px;font-weight:800;color:#16b85a!important;text-decoration:none;white-space:nowrap}
+.line-mobile{color:#16b85a!important;font-weight:800}
+
+.line-fab{
+  position:fixed;right:22px;bottom:22px;z-index:90;
+  display:flex;align-items:center;gap:7px;padding:11px 15px 11px 12px;
+  border-radius:999px;background:#06c755;color:#fff;text-decoration:none;
+  box-shadow:0 10px 32px rgba(0,0,0,.22);font-size:12px;line-height:1;
+  transition:transform .18s ease,box-shadow .18s ease
+}
+.line-fab:hover{transform:translateY(-2px);box-shadow:0 14px 36px rgba(0,0,0,.26)}
+.line-fab span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#fff;color:#06a947;font-size:10px;font-weight:900}
+.line-fab b{font-size:14px;letter-spacing:.05em}
+
+.field-note{display:block;margin-top:7px;color:#728295;font-size:11px;line-height:1.55}
+.line-confirm-card{
+  display:flex;justify-content:space-between;align-items:center;gap:22px;
+  margin:8px 0 12px;padding:18px 20px;border:1px solid #c9e9d4;background:#f4fbf6
+}
+.line-confirm-card strong{display:block;color:#071f3b;font-size:15px}
+.line-confirm-card span{display:inline-block;margin-top:3px;color:#06a947;font-weight:800}
+.line-confirm-card p{margin:6px 0 0;color:#64766d;font-size:12px;line-height:1.6}
+.line-btn{background:#06c755!important;border-color:#06c755!important;color:#fff!important}
+.line-required{margin:0 0 24px;padding:12px 14px;border-left:3px solid #06c755;background:#fafdfb}
+
+.success-box.show{padding:28px;border:1px solid #b8ddc6;background:#f5fbf7}
+.success-check{
+  display:grid;place-items:center;width:42px;height:42px;margin-bottom:14px;
+  border-radius:50%;background:#06c755;color:#fff;font-size:24px;font-weight:900
+}
+.success-actions{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 12px}
+.success-actions .btn{min-width:190px}
+.booking-code{border-radius:2px}
+
+@media(max-width:900px){
+  .line-nav{display:none}
+}
+@media(max-width:700px){
+  .line-fab{right:14px;bottom:92px;padding:9px 12px 9px 9px}
+  .line-fab span{width:30px;height:30px}
+  .line-confirm-card{align-items:flex-start;flex-direction:column;gap:13px;padding:16px}
+  .line-confirm-card .btn{width:100%}
+  .success-actions{display:grid;grid-template-columns:1fr}
+  .success-actions .btn{width:100%;min-width:0}
+}
+
+
+/* ===== BabyFat V8.1 course architecture ===== */
+.season-timeline{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0 14px}.season-timeline article{border:1px solid #d8e1e8;background:#fff;padding:20px;display:grid;gap:5px}.season-timeline article.peak{border-color:#ff7b2f;box-shadow:inset 0 3px 0 #ff7b2f}.season-timeline b{font-size:12px;color:#6f8292}.season-timeline strong{font-size:22px;color:#071f3b}.season-timeline span{font-size:12px;color:#71808c}
+.v81-course-grid{display:grid;gap:14px}.v81-course-card{display:grid;grid-template-columns:70px 1fr;gap:22px;background:#fff;border:1px solid #d8e1e8;padding:28px}.v81-course-card.featured{border-color:#ff7b2f;box-shadow:inset 4px 0 0 #ff7b2f}.course-no{font-size:13px;font-weight:900;color:#ff7b2f;letter-spacing:.12em}.v81-course-card h3{font-size:clamp(25px,3vw,38px);margin:4px 0 10px;color:#071f3b}.v81-course-card p{max-width:760px}.course-price-pair{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px;max-width:560px;margin:18px 0}.course-price-pair>div,.private-prices{background:#f5f7f8;padding:14px 16px}.course-price-pair span,.private-prices span{display:block;font-size:11px;color:#748391}.course-price-pair b,.private-prices b{display:block;margin-top:3px;font-size:20px;color:#071f3b}.private-prices{max-width:700px;margin:18px 0}.private-prices em{font-style:normal;color:#ff6f1d}.bonus-callout{margin:24px 0;padding:18px;border-left:4px solid #ff7b2f;background:#fff3ea;display:grid;gap:5px}.bonus-callout span,.bonus-callout small{font-size:12px}
+.course-option-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.course-pick{appearance:none;text-align:left;border:1px solid #d8e1e8;background:#fff;padding:15px;cursor:pointer;display:grid;gap:5px;transition:.16s ease}.course-pick:hover,.course-pick.active{border-color:#ff7b2f;box-shadow:inset 3px 0 0 #ff7b2f}.course-pick span{font-weight:900;color:#071f3b}.course-pick small{font-size:10px;color:#71808c;line-height:1.5}.course-pick b{font-size:17px;color:#ff6f1d}.recommendation-note,.season-phase-hint,.bonus-hint{margin-top:10px;padding:12px 14px;background:#f4f7f8;font-size:12px;color:#526573;line-height:1.65}.season-phase-hint{display:flex;gap:10px;align-items:center}.season-phase-hint b{color:#ff6f1d}.bonus-hint{background:#fff2e9;border-left:3px solid #ff7b2f}.bonus-hint.hidden{display:none}.large-group-contact{grid-column:1/-1;padding:20px;background:#071f3b;color:#fff;display:grid;gap:8px}.large-group-contact span{color:#c9d6df;font-size:12px}.booking-extra-status{display:grid;gap:8px;margin-top:14px}.booking-extra-status>div{padding:12px 14px;background:#f5f7f8;display:grid;gap:3px}.booking-extra-status span{font-size:12px;color:#667987}.photo-showcase{background:#071f3b;color:#fff}.photo-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.partner-url{display:block;margin-top:12px;color:#9fb2c0}.photo-addon-image img{width:100%;height:100%;min-height:420px;object-fit:cover}
+@media(max-width:760px){.season-timeline{grid-template-columns:1fr}.v81-course-card{grid-template-columns:1fr;padding:20px}.course-price-pair,.course-option-grid{grid-template-columns:1fr}.photo-addon-image img{min-height:280px}}

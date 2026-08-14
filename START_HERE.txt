@@ -1,0 +1,7 @@
+BabyFat V8.1 正式版
+
+先看：V8.1_DEPLOY_GUIDE.txt
+課程規則：COURSE_RULEBOOK_V8.1.txt
+
+GitHub 上傳時，請把這個資料夾裡面的檔案直接放到 repo 根目錄。
+repo 最外層應直接看到：wrangler.jsonc / package.json / src / migrations / public。
