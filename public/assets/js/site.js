@@ -90,6 +90,7 @@ function setupContactLinks(){
 function showBookingSync(msg){const e=$('#bookingSync');if(e){e.textContent=msg;e.classList.add('show')}}
 function hideBookingSync(){const e=$('#bookingSync');if(e)e.classList.remove('show')}
 function renderBookingSuccess(r,email){
+  bookingDraftClear();
   hideBookingSync();
   $('#bookingError')?.classList.remove('show');
   $('#bookingWizard')?.classList.add('hidden');
@@ -116,14 +117,133 @@ window.addEventListener('babyfat:config',()=>{const active=$('.region-toggle but
 
 function setupSeasonDates(){const d=$('#lessonDate');if(!d)return;d.min=BF.config.seasonStart||'2026-12-15';d.max=BF.config.seasonEnd||'2027-04-30';if(!d.value||d.value<d.min||d.value>d.max)d.value=d.min}
 
+
+const BF_BOOKING_DRAFT_KEY='babyfat_booking_draft_v815';
+function bookingDraftLoad(){
+  try{
+    const d=JSON.parse(localStorage.getItem(BF_BOOKING_DRAFT_KEY)||'null');
+    if(!d||!d.savedAt||Date.now()-d.savedAt>24*60*60*1000)return null;
+    return d;
+  }catch(e){return null}
+}
+function bookingDraftSave(step){
+  const form=$('#bookingWizard');if(!form)return;
+  const participants=[...$$('.participant',form)].map(x=>({
+    name:x.querySelector('[data-p=name]')?.value||'',
+    age:x.querySelector('[data-p=age]')?.value||'',
+    level:x.querySelector('[data-p=level]')?.value||'first'
+  }));
+  const d={
+    savedAt:Date.now(),step:Number(step||1),
+    region:choiceValue('region','yuzawa'),
+    partyType:choiceValue('partyType','adult'),
+    board:choiceValue('board','ski'),
+    duration:choiceValue('duration','half'),
+    lessonDate:$('#lessonDate')?.value||'',
+    resort:$('#resort')?.value||'',
+    people:$('#people')?.value||'2',
+    course:$('#courseOptions')?.dataset.selected||'',
+    timeSlot:$('#timeSlot')?.value||'AM',
+    contactName:$('#contactName')?.value||'',
+    phone:$('#phone')?.value||'',
+    email:$('#bookingEmail')?.value||'',
+    lineName:$('#lineName')?.value||'',
+    lineId:$('#lineId')?.value||'',
+    lineJoined:!!$('#lineJoined')?.checked,
+    participants,
+    notes:$('#notes')?.value||'',
+    stay:!!$('#stay')?.checked,
+    nights:$('#nights')?.value||'1',
+    stayRooms:$('#stayRooms')?.value||'1',
+    photo:!!$('#photo')?.checked,
+    shuttle:$('#shuttle')?.value||'none'
+  };
+  try{localStorage.setItem(BF_BOOKING_DRAFT_KEY,JSON.stringify(d))}catch(e){}
+}
+function bookingDraftClear(){try{localStorage.removeItem(BF_BOOKING_DRAFT_KEY)}catch(e){}}
+function setChoiceDraft(group,value){
+  if(!value)return;
+  $$(`.choice[data-group="${group}"]`).forEach(x=>x.classList.toggle('active',x.dataset.value===String(value)));
+}
+function applyBookingDraftBase(d){
+  if(!d)return;
+  setChoiceDraft('region',d.region);
+  setChoiceDraft('partyType',d.partyType);
+  setChoiceDraft('board',d.board);
+  setChoiceDraft('duration',d.duration);
+  if($('#lessonDate')&&d.lessonDate)$('#lessonDate').value=d.lessonDate;
+  if($('#people')&&d.people)$('#people').value=d.people;
+}
+function applyBookingDraftDetails(d){
+  if(!d)return;
+  const set=(id,v)=>{const e=$('#'+id);if(e&&v!==undefined&&v!==null)e.value=String(v)};
+  set('resort',d.resort);set('timeSlot',d.timeSlot);set('contactName',d.contactName);set('phone',d.phone);
+  set('bookingEmail',d.email);set('lineName',d.lineName);set('lineId',d.lineId);set('notes',d.notes);
+  set('nights',d.nights);set('stayRooms',d.stayRooms);set('shuttle',d.shuttle);
+  if($('#lineJoined'))$('#lineJoined').checked=!!d.lineJoined;
+  if($('#stay'))$('#stay').checked=!!d.stay;
+  if($('#photo'))$('#photo').checked=!!d.photo;
+  const box=$('#courseOptions');
+  if(box&&d.course&&[...box.querySelectorAll('.course-pick')].some(x=>x.dataset.course===d.course)){
+    box.dataset.selected=d.course;
+    $$('.course-pick',box).forEach(x=>x.classList.toggle('active',x.dataset.course===d.course));
+  }
+  const parts=Array.isArray(d.participants)?d.participants:[];
+  $$('.participant').forEach((x,i)=>{
+    const p=parts[i]||{};
+    const name=x.querySelector('[data-p=name]'),age=x.querySelector('[data-p=age]'),level=x.querySelector('[data-p=level]');
+    if(name)name.value=p.name||'';
+    if(age)age.value=p.age||'';
+    if(level&&p.level)level.value=p.level;
+  });
+}
+
 function setupBooking(){
- const form=$('#bookingWizard');if(!form||form.dataset.ready)return;form.dataset.ready='1';let step=1;
- const show=()=>{$$('.form-step',form).forEach(x=>x.classList.toggle('active',+x.dataset.step===step));$$('.progress span',form).forEach((x,i)=>x.classList.toggle('active',i<step));updateBookingSummary();window.scrollTo({top:form.offsetTop-85,behavior:'smooth'})};
- window.nextStep=()=>{if(step<4){if(!validateBookingStep(step))return;step++;show()}};window.prevStep=()=>{if(step>1){step--;show()}};
- form.addEventListener('click',e=>{const b=e.target.closest('.choice');if(!b)return;const g=b.dataset.group;if(g){$$(`.choice[data-group="${g}"]`,form).forEach(x=>x.classList.remove('active'));b.classList.add('active')}if(g==='region')updateResortOptions();if(g==='duration')updateTimeSlotOptions();if(['region','partyType','board','duration'].includes(g))renderCourseOptions();updateBookingSummary()});
- form.addEventListener('change',e=>{if(e.target.id==='people'){renderParticipants();renderCourseOptions()}if(e.target.id==='lessonDate')updateSeasonPhaseHint();updateBookingSummary()});
+ const form=$('#bookingWizard');if(!form||form.dataset.ready)return;form.dataset.ready='1';
+ const draft=bookingDraftLoad();let step=Math.max(1,Math.min(4,Number(draft?.step||1)));
+ const show=(smooth=true)=>{
+   $$('.form-step',form).forEach(x=>x.classList.toggle('active',+x.dataset.step===step));
+   $$('.progress span',form).forEach((x,i)=>x.classList.toggle('active',i<step));
+   updateBookingSummary();bookingDraftSave(step);
+   if(smooth)window.scrollTo({top:form.offsetTop-85,behavior:'smooth'});
+ };
+ window.nextStep=()=>{if(step<4){if(!validateBookingStep(step))return;step++;show()}};
+ window.prevStep=()=>{if(step>1){step--;show()}};
+
+ setupSeasonDates();
+ applyBookingDraftBase(draft);
+ updateResortOptions();
+ updateTimeSlotOptions();
+ renderParticipants();
+ renderCourseOptions();
+ applyBookingDraftDetails(draft);
+ updateSeasonPhaseHint();
+ updateBookingSummary();
+ show(false);
+
+ form.addEventListener('click',e=>{
+   const b=e.target.closest('.choice');if(!b)return;
+   const g=b.dataset.group;
+   if(g){$$(`.choice[data-group="${g}"]`,form).forEach(x=>x.classList.remove('active'));b.classList.add('active')}
+   if(g==='region')updateResortOptions();
+   if(g==='duration')updateTimeSlotOptions();
+   if(['region','partyType','board','duration'].includes(g))renderCourseOptions();
+   updateBookingSummary();bookingDraftSave(step);
+ });
+ form.addEventListener('change',e=>{
+   if(e.target.id==='people'){renderParticipants();renderCourseOptions()}
+   if(e.target.id==='lessonDate')updateSeasonPhaseHint();
+   updateBookingSummary();bookingDraftSave(step);
+ });
+ form.addEventListener('input',()=>bookingDraftSave(step));
  $('#submitBooking')?.addEventListener('click',submitBooking);
- setupSeasonDates();renderParticipants();updateResortOptions();updateTimeSlotOptions();renderCourseOptions();updateSeasonPhaseHint();updateBookingSummary();
+
+ $$('.line-open-booking',form).forEach(a=>a.addEventListener('click',()=>{
+   bookingDraftSave(step);
+   toast('預約資料已暫存 返回此頁可繼續填寫');
+ }));
+ window.addEventListener('pagehide',()=>bookingDraftSave(step));
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')bookingDraftSave(step)});
 }
 function choiceValue(group,fallback){return $(`.choice.active[data-group="${group}"]`)?.dataset.value||fallback}
 function updateResortOptions(){const s=$('#resort');if(!s)return;const region=choiceValue('region','yuzawa');s.innerHTML=region==='yuzawa'?'<option value="BabyFat arrange">由 BabyFat 安排</option><option value="Nakazato">中里</option><option value="Iwappara">岩原</option><option value="Other Yuzawa">其他湯澤雪場</option>':'<option value="BabyFat arrange">由 BabyFat 安排</option><option value="Karuizawa area">輕井澤區</option>'}

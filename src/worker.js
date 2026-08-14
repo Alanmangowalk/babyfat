@@ -1,4 +1,4 @@
-// BabyFat V8.1 — Cloudflare Worker + D1
+// BabyFat V8.1.5 — Cloudflare Worker + D1
 // D1 is the transaction source of truth. Google Sheets is a mirrored operating backend.
 
 const DEFAULTS = {
@@ -78,7 +78,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.4"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.5"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -147,6 +147,33 @@ async function handleApi(request, env, ctx, url) {
         await replaceParticipants(env,bookingId,rows);
       }
       return json({ok:true,data:{bookings:count,participants:participants.length}});
+    }
+
+
+    if (path === "/api/internal/pull-bookings" && request.method === "POST") {
+      const payload = await readJson(request);
+      const limit = Math.max(1, Math.min(500, Math.floor(num(payload.limit, 200))));
+      const updatedAfter = clean(payload.updatedAfter, 40);
+      const data = await pullBookingsForSheet(env, updatedAfter, limit);
+      return json({ok:true,data});
+    }
+
+    if (path === "/api/internal/sync-status" && request.method === "POST") {
+      const counts = await env.DB.prepare(`
+        SELECT status, COUNT(*) AS n
+        FROM sync_queue
+        GROUP BY status
+      `).all();
+      const recent = await env.DB.prepare(`
+        SELECT id,entity_type,ref_id,status,attempts,next_attempt_at,last_error,updated_at
+        FROM sync_queue
+        ORDER BY id DESC
+        LIMIT 20
+      `).all();
+      return json({ok:true,data:{
+        counts:counts.results||[],
+        recent:recent.results||[]
+      }});
     }
 
     return json({ok:false,error:"INTERNAL_ROUTE_NOT_FOUND"},404);
@@ -544,6 +571,55 @@ async function expireBookings(env){
     if(row)await enqueueSync(env,"payment",x.booking_id,row);
   }
   await flushSyncQueue(env,30);
+}
+
+
+async function pullBookingsForSheet(env,updatedAfter,limit){
+  let rows;
+  if(updatedAfter){
+    rows = await env.DB.prepare(`
+      SELECT * FROM bookings
+      WHERE updated_at >= ?
+      ORDER BY updated_at ASC
+      LIMIT ?
+    `).bind(updatedAfter,limit).all();
+  }else{
+    rows = await env.DB.prepare(`
+      SELECT * FROM bookings
+      ORDER BY updated_at ASC
+      LIMIT ?
+    `).bind(limit).all();
+  }
+
+  const bookings = rows.results || [];
+  if(!bookings.length) return {bookings:[],count:0,lastUpdated:""};
+
+  const ids = bookings.map(x=>String(x.booking_id||"")).filter(Boolean);
+  let participants = [];
+  if(ids.length){
+    const placeholders = ids.map(()=>"?").join(",");
+    const pr = await env.DB.prepare(`
+      SELECT booking_id,participant_no,name,age,level,notes,created_at
+      FROM participants
+      WHERE booking_id IN (${placeholders})
+      ORDER BY booking_id,participant_no
+    `).bind(...ids).all();
+    participants = pr.results || [];
+  }
+
+  const byId = new Map();
+  for(const p of participants){
+    const id = String(p.booking_id||"");
+    if(!byId.has(id)) byId.set(id,[]);
+    byId.get(id).push(p);
+  }
+
+  const out = bookings.map(b=>({...b,participants:byId.get(String(b.booking_id||""))||[]}));
+  return {
+    bookings:out,
+    count:out.length,
+    lastUpdated:String(out[out.length-1]?.updated_at||"")
+  };
 }
 
 async function syncSettingsFromSheet(env,payload){

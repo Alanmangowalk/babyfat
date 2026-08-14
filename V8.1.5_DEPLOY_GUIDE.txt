@@ -1,0 +1,59 @@
+BabyFat V8.1.5 部署說明
+
+這版處理三件事：
+1. 預約頁手機底部不再固定顯示「我的預約 / 立即預約」，避免正在填表時誤觸跳頁。
+2. 點「打開官方 LINE」前會自動把預約草稿存在瀏覽器；24 小時內回到預約頁會恢復步驟與已填資料。
+   預約頁的全站浮動 LINE 客服也暫時隱藏，只保留表單內明確的官方 LINE 按鈕。
+3. Google Sheet 後台增加 D1 主動拉取：
+   - 手動：BabyFat 系統 > V8.1 同步 D1 訂單回後台
+   - 自動：安裝雙向同步後，每 5 分鐘從 D1 補抓一次
+   - 可查看：BabyFat 系統 > V8.1 檢查 D1 同步狀態
+
+部署順序
+
+A. Cloudflare / GitHub
+- 不用刪 GitHub 舊檔。
+- 將 Cloudflare ZIP 解壓後的內容直接覆蓋 repo 根目錄。
+- Commit 到 main。
+- 不用重建 D1。
+- 不用重跑 migration。
+- 不用改 SHEET_SYNC_TOKEN。
+- Database ID 已保留：
+  d99bd18e-fd92-466d-819e-d28a6a2279ef
+
+部署完成後開：
+https://babyfatsnowteam.mangowalkers.workers.dev/api/health
+
+應看到：
+version 8.1.5
+
+B. Google Apps Script
+- 用 GAS ZIP 裡的 Code.gs 完整覆蓋目前 Apps Script。
+- 儲存。
+- 部署 > 管理部署 > 編輯既有 Web App > 新版本 > 部署。
+- 不要建立新的 deployment。
+- 原本 /exec URL 不變。
+- 不用重新產生同步碼。
+
+C. 先把目前 D1 測試訂單拉回 Sheet
+Google Sheet 重新整理後：
+BabyFat 系統 > V8.1 同步 D1 訂單回後台
+
+完成後「預約訂單」應立即出現 D1 現有訂單。
+
+D. 安裝可靠雙向同步
+BabyFat 系統 > V8 安裝雙向同步
+
+會建立：
+- Sheet 編輯 -> D1 的 onEdit 同步
+- 每 5 分鐘 D1 -> Sheet 補抓同步
+
+D1 仍然是官網交易主資料庫。
+Google Sheet 是營運管理後台與鏡像。
+
+E. 若想檢查背景同步
+BabyFat 系統 > V8.1 檢查 D1 同步狀態
+
+會看到：
+PENDING / RETRY / SYNCED
+以及最近的同步錯誤摘要。

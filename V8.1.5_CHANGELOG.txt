@@ -1,0 +1,15 @@
+BabyFat V8.1.5
+
+UX
+- Booking page removes persistent bottom booking CTA on mobile.
+- Booking page hides global floating LINE widget; the official LINE card inside the form remains.
+- Booking form draft autosaves to localStorage on input/change/pagehide/LINE click.
+- Draft restores for up to 24 hours, including current step, course choices, contact fields, participants and add-ons.
+- Draft clears after a successful booking.
+
+Operations
+- New authenticated /api/internal/pull-bookings endpoint.
+- New authenticated /api/internal/sync-status endpoint.
+- Google Sheet menu can pull existing D1 bookings immediately.
+- Installing two-way sync also installs a 5-minute D1 -> Sheet backup pull trigger.
+- Existing Worker push queue remains active, so Sheet sync now has push + periodic pull redundancy.
