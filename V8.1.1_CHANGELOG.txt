@@ -1,0 +1,7 @@
+BabyFat V8.1.1
+- LINE 顯示名稱維持必填
+- LINE ID 改為獨立選填欄位
+- 新增 LINE 對接狀態供後台人工核對
+- 預約成功仍要求一鍵傳送預約編號到官方 LINE
+- D1 新增 line_id 與 line_contact_status
+- Google Sheet 新增 LINE ID 與 LINE 對接狀態欄位

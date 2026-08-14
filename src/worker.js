@@ -76,7 +76,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.1"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -333,7 +333,7 @@ async function createBooking(env,p){
   const row={
     booking_id:id,request_key:requestKey||null,created_at:now,updated_at:now,
     booking_status:status,payment_status:"PENDING",payment_deadline:deadline,payment_submitted_at:null,payment_last5:null,paid_at:null,
-    contact_name:clean(p.contactName,120),phone:clean(p.phone,50),email:clean(p.email,180),email_norm:emailNorm(p.email),line_name:clean(p.line,120),line_joined:1,
+    contact_name:clean(p.contactName,120),phone:clean(p.phone,50),email:clean(p.email,180),email_norm:emailNorm(p.email),line_name:clean(p.line,120),line_id:clean(p.lineId,120),line_joined:1,line_contact_status:"PENDING_CONFIRMATION",
     region:clean(p.region,20),resort:clean(p.resort,120),lesson_date:safeDateOnly(p.lessonDate),board:clean(p.board,20),course,duration,time_slot:clean(p.timeSlot,30),people_count:c.people,tuition_twd:c.tuition,
     stay_requested:bool(p.stay)?1:0,stay_nights:c.nights,stay_rooms:c.rooms,stay_twd:c.stayTwd,stay_status:bool(p.stay)?"REQUESTED":"NOT_REQUESTED",
     photo_requested:bool(p.photo)?1:0,photo_twd:c.photoTwd,photo_status:bool(p.photo)?"REQUESTED":"NOT_REQUESTED",
@@ -346,7 +346,7 @@ async function createBooking(env,p){
 
   const cols=[
     "booking_id","request_key","created_at","updated_at","booking_status","payment_status","payment_deadline","payment_submitted_at","payment_last5","paid_at",
-    "contact_name","phone","email","email_norm","line_name","line_joined","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
+    "contact_name","phone","email","email_norm","line_name","line_id","line_joined","line_contact_status","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
     "stay_requested","stay_nights","stay_rooms","stay_twd","stay_status","photo_requested","photo_twd","photo_status","shuttle","shuttle_jpy","shuttle_status",
     "total_twd","needs_review","assigned_coach","notes","privacy_consent","terms_consent","source","sync_status",
     "party_type","season_phase","coach_count","share_status","share_group_id","bonus_hour_eligible","bonus_hour_status"
@@ -526,7 +526,7 @@ function normalizeSheetBooking(b){
   const out={};
   const keys=[
     "booking_id","created_at","updated_at","booking_status","payment_status","payment_deadline","payment_submitted_at","payment_last5","paid_at",
-    "contact_name","phone","email","line_name","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
+    "contact_name","phone","email","line_name","line_id","line_contact_status","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
     "stay_requested","stay_nights","stay_rooms","stay_twd","stay_status","photo_requested","photo_twd","photo_status","shuttle","shuttle_jpy","shuttle_status",
     "total_twd","needs_review","assigned_coach","notes","privacy_consent","terms_consent","source",
     "party_type","season_phase","coach_count","share_status","share_group_id","bonus_hour_eligible","bonus_hour_status"
@@ -535,7 +535,9 @@ function normalizeSheetBooking(b){
   out.booking_id=clean(out.booking_id,80);
   out.email=clean(out.email,180);
   out.email_norm=emailNorm(out.email);
+  out.line_id=clean(out.line_id,120);
   out.line_joined=out.line_name?1:0;
+  out.line_contact_status=clean(out.line_contact_status||"PENDING_CONFIRMATION",40);
   out.sync_status="SYNCED";
   out.created_at=normalizeDate(out.created_at)||isoNow();
   out.updated_at=normalizeDate(out.updated_at)||isoNow();
@@ -570,12 +572,12 @@ async function upsertBookingFromSheet(env,b){
   r.bonus_hour_status=clean(r.bonus_hour_status||(r.duration==="full"?"PENDING_PAYMENT":"NOT_APPLICABLE"),50);
   const cols=[
     "booking_id","request_key","created_at","updated_at","booking_status","payment_status","payment_deadline","payment_submitted_at","payment_last5","paid_at",
-    "contact_name","phone","email","email_norm","line_name","line_joined","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
+    "contact_name","phone","email","email_norm","line_name","line_id","line_joined","line_contact_status","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
     "stay_requested","stay_nights","stay_rooms","stay_twd","stay_status","photo_requested","photo_twd","photo_status","shuttle","shuttle_jpy","shuttle_status",
     "total_twd","needs_review","assigned_coach","notes","privacy_consent","terms_consent","source","sync_status",
     "party_type","season_phase","coach_count","share_status","share_group_id","bonus_hour_eligible","bonus_hour_status"
   ];
-  const v={...r,request_key:null,email_norm:emailNorm(r.email),line_joined:r.line_name?1:0,sync_status:"SYNCED"};
+  const v={...r,request_key:null,email_norm:emailNorm(r.email),line_id:clean(r.line_id,120),line_joined:r.line_name?1:0,line_contact_status:clean(r.line_contact_status||"PENDING_CONFIRMATION",40),sync_status:"SYNCED"};
   const updateCols=cols.filter(k=>!["booking_id","request_key","created_at"].includes(k));
   const sql=`INSERT INTO bookings (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')}) ON CONFLICT(booking_id) DO UPDATE SET ${updateCols.map(k=>`${k}=excluded.${k}`).join(',')},sync_status='SYNCED'`;
   await env.DB.prepare(sql).bind(...cols.map(k=>v[k]===undefined?null:v[k])).run();

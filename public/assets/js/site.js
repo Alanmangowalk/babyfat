@@ -96,7 +96,7 @@ function renderBookingSuccess(r,email){
   const box=$('#bookingSuccess');
   box.classList.add('show');
   const message=`您好 我剛完成 BabyFat 滑雪預約\n預約編號 ${r.bookingId}`;
-  box.innerHTML=`<div class="success-check">✓</div><div class="eyebrow">BOOKING CONFIRMED</div><h3>預約已建立</h3><p class="success-lead">你的資料已安全記錄 不需要再次送出</p><div class="booking-code"><span>預約編號</span><b>${escapeHtml(r.bookingId)}</b></div><p>${r.bookingStatus==='PENDING_REVIEW'?'住宿 攝影或接駁需求正在確認 完成確認後會開放付款':'名額已暫留 請於付款期限內完成匯款'}</p>${r.paymentDeadline?`<p class="small">付款期限 ${escapeHtml(r.paymentDeadline)}</p>`:''}<div class="success-actions"><a class="btn primary" href="my-booking.html?id=${encodeURIComponent(r.bookingId)}">查看我的預約</a><a class="btn line-btn" href="${lineChatUrl(message)}" target="_blank" rel="noopener">用 LINE 傳送預約編號</a></div><p class="small">建議加入官方 LINE ${escapeHtml(lineId())} 後傳送預約編號 後續課程與付款聯絡會更即時</p>`;
+  box.innerHTML=`<div class="success-check">✓</div><div class="eyebrow">BOOKING CONFIRMED</div><h3>預約已建立</h3><p class="success-lead">你的資料已安全記錄 不需要再次送出</p><div class="booking-code"><span>預約編號</span><b>${escapeHtml(r.bookingId)}</b></div><p>${r.bookingStatus==='PENDING_REVIEW'?'住宿 攝影或接駁需求正在確認 完成確認後會開放付款':'名額已暫留 請於付款期限內完成匯款'}</p>${r.paymentDeadline?`<p class="small">付款期限 ${escapeHtml(r.paymentDeadline)}</p>`:''}<div class="success-actions"><a class="btn primary" href="my-booking.html?id=${encodeURIComponent(r.bookingId)}">查看我的預約</a><a class="btn line-btn" href="${lineChatUrl(message)}" target="_blank" rel="noopener">用 LINE 傳送預約編號</a></div><p class="small">請加入官方 LINE ${escapeHtml(lineId())} 並傳送預約編號 客服核對後即可完成 LINE 對接</p>`;
   window.scrollTo({top:box.offsetTop-90,behavior:'smooth'});
 }
 async function loadPublicConfig(){try{const c=await apiRequest('publicConfig');BF.config={...BF.config,...c,prices:{...(BF.config.prices||{}),...(c.prices||{})},shuttle:{...(BF.config.shuttle||{}),...(c.shuttle||{})},contact:{...(BF.config.contact||{}),...(c.contact||{})}};window.dispatchEvent(new CustomEvent('babyfat:config',{detail:BF.config}));setupContactLinks()}catch(e){console.info('BabyFat fallback config',e.message);setupContactLinks()}}
@@ -162,7 +162,7 @@ async function submitBooking(){
   const payload={
     ...c,resort:$('#resort')?.value||'',lessonDate:$('#lessonDate')?.value||'',timeSlot:$('#timeSlot')?.value||'',
     contactName:$('#contactName')?.value.trim()||'',phone:$('#phone')?.value.trim()||'',email:$('#bookingEmail')?.value.trim()||'',
-    line:$('#lineName')?.value.trim()||'',lineJoined:!!$('#lineJoined')?.checked,notes:$('#notes')?.value.trim()||'',
+    line:$('#lineName')?.value.trim()||'',lineId:$('#lineId')?.value.trim()||'',lineJoined:!!$('#lineJoined')?.checked,notes:$('#notes')?.value.trim()||'',
     participants,termsConsent:true,privacyConsent:true,source:'website',requestKey
   };
 
