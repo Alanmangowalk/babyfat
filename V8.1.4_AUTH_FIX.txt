@@ -1,0 +1,17 @@
+BabyFat V8.1.4 Auth Fix
+
+這版只處理 D1 同步授權問題：
+1. Cloudflare Secret 與 GAS Header 比對前會自動 trim 前後空白/換行。
+2. 401 不再只顯示 UNAUTHORIZED，而會區分：
+   - AUTH_SECRET_MISSING
+   - AUTH_HEADER_MISSING
+   - AUTH_TOKEN_MISMATCH
+3. 錯誤只回報是否存在與字串長度，不會洩漏同步碼內容。
+4. /api/health 版本更新為 8.1.4。
+
+D1 Database ID 已保留：
+d99bd18e-fd92-466d-819e-d28a6a2279ef
+
+部署方式：
+將此 ZIP 解壓後的內容直接覆蓋 GitHub repo 根目錄，Commit 到 main。
+不需要重新建 D1，不需要重跑 migration，不需要改 GAS。

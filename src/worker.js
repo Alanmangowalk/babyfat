@@ -58,7 +58,9 @@ export default {
       } catch (err) {
         console.error("BabyFat API error", err);
         const status = Number(err?.status || 500);
-        return json({ok:false,error:String(err?.message || "SERVER_ERROR")}, status);
+        const body = {ok:false,error:String(err?.message || "SERVER_ERROR")};
+        if (err?.authDebug) body.authDebug = err.authDebug;
+        return json(body, status);
       }
     }
     return env.ASSETS.fetch(request);
@@ -76,7 +78,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.1"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.4"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -154,11 +156,46 @@ async function handleApi(request, env, ctx, url) {
 }
 
 function requireSyncAuth(request, env) {
-  const expected = String(env.SHEET_SYNC_TOKEN||"");
-  const got = String(request.headers.get("X-BabyFat-Sync")||"");
-  if (!expected || !got || got !== expected) {
-    const e = new Error("UNAUTHORIZED");
+  const expectedRaw = String(env.SHEET_SYNC_TOKEN ?? "");
+  const gotRaw = String(request.headers.get("X-BabyFat-Sync") ?? "");
+  const expected = expectedRaw.trim();
+  const got = gotRaw.trim();
+
+  if (!expected) {
+    const e = new Error("AUTH_SECRET_MISSING");
     e.status = 401;
+    e.authDebug = {
+      secretPresent:false,
+      headerPresent:!!got,
+      expectedLength:0,
+      receivedLength:got.length
+    };
+    throw e;
+  }
+
+  if (!got) {
+    const e = new Error("AUTH_HEADER_MISSING");
+    e.status = 401;
+    e.authDebug = {
+      secretPresent:true,
+      headerPresent:false,
+      expectedLength:expected.length,
+      receivedLength:0
+    };
+    throw e;
+  }
+
+  if (got !== expected) {
+    const e = new Error("AUTH_TOKEN_MISMATCH");
+    e.status = 401;
+    e.authDebug = {
+      secretPresent:true,
+      headerPresent:true,
+      expectedLength:expected.length,
+      receivedLength:got.length,
+      expectedWhitespaceTrimmed:expectedRaw.length !== expected.length,
+      receivedWhitespaceTrimmed:gotRaw.length !== got.length
+    };
     throw e;
   }
 }
