@@ -115,7 +115,27 @@ function setRegionPrices(region){
 window.setRegion=setRegionPrices;
 window.addEventListener('babyfat:config',()=>{const active=$('.region-toggle button.active')?.dataset.region||'yuzawa';setRegionPrices(active);setupSeasonDates()});
 
-function setupSeasonDates(){const d=$('#lessonDate');if(!d)return;d.min=BF.config.seasonStart||'2026-12-15';d.max=BF.config.seasonEnd||'2027-04-30';if(!d.value||d.value<d.min||d.value>d.max)d.value=d.min}
+const BF_MAX_LESSON_DAYS=10;
+function getLessonDates(){
+  return [...new Set($$('.lesson-date-input').map(x=>x.value).filter(Boolean))].sort();
+}
+function renderLessonDateRows(values){
+  const box=$('#lessonDates');if(!box)return;
+  const min=BF.config.seasonStart||'2026-12-15',max=BF.config.seasonEnd||'2027-04-30';
+  const vals=(Array.isArray(values)&&values.length?values:[min]).slice(0,BF_MAX_LESSON_DAYS);
+  box.innerHTML='';
+  vals.forEach((v,i)=>{
+    const row=document.createElement('div');row.className='lesson-date-row';
+    row.innerHTML=`<input class="lesson-date-input" type="date" min="${min}" max="${max}" value="${escapeHtml(v||min)}"><button type="button" class="lesson-date-remove" aria-label="移除日期" ${vals.length===1?'disabled':''}>×</button>`;
+    box.appendChild(row);
+  });
+}
+function setupSeasonDates(){
+  const min=BF.config.seasonStart||'2026-12-15',max=BF.config.seasonEnd||'2027-04-30';
+  if(!$('#lessonDates'))return;
+  if(!$$('.lesson-date-input').length)renderLessonDateRows([min]);
+  $$('.lesson-date-input').forEach(d=>{d.min=min;d.max=max;if(!d.value||d.value<min||d.value>max)d.value=min});
+}
 
 
 const BF_BOOKING_DRAFT_KEY='babyfat_booking_draft_v815';
@@ -139,7 +159,7 @@ function bookingDraftSave(step){
     partyType:choiceValue('partyType','adult'),
     board:choiceValue('board','ski'),
     duration:choiceValue('duration','half'),
-    lessonDate:$('#lessonDate')?.value||'',
+    lessonDates:getLessonDates(),
     resort:$('#resort')?.value||'',
     people:$('#people')?.value||'2',
     course:$('#courseOptions')?.dataset.selected||'',
@@ -171,7 +191,7 @@ function applyBookingDraftBase(d){
   setChoiceDraft('partyType',d.partyType);
   setChoiceDraft('board',d.board);
   setChoiceDraft('duration',d.duration);
-  if($('#lessonDate')&&d.lessonDate)$('#lessonDate').value=d.lessonDate;
+  if(Array.isArray(d.lessonDates)&&d.lessonDates.length)renderLessonDateRows(d.lessonDates);else if(d.lessonDate)renderLessonDateRows([d.lessonDate]);
   if($('#people')&&d.people)$('#people').value=d.people;
 }
 function applyBookingDraftDetails(d){
@@ -228,11 +248,27 @@ function setupBooking(){
    if(g==='region')updateResortOptions();
    if(g==='duration')updateTimeSlotOptions();
    if(['region','partyType','board','duration'].includes(g))renderCourseOptions();
+   const add=e.target.closest('#addLessonDate');
+   const remove=e.target.closest('.lesson-date-remove');
+   if(add){
+     const dates=getLessonDates();
+     if(dates.length>=BF_MAX_LESSON_DAYS){toast('單筆預約最多可選 10 個上課日');return}
+     const base=dates[dates.length-1]||BF.config.seasonStart||'2026-12-15';
+     const next=new Date(base+'T00:00:00');next.setDate(next.getDate()+1);
+     const nextVal=next.toISOString().slice(0,10);
+     renderLessonDateRows([...dates,nextVal<=String(BF.config.seasonEnd||'2027-04-30')?nextVal:base]);
+     setupSeasonDates();updateSeasonPhaseHint();updateBookingSummary();bookingDraftSave(step);return;
+   }
+   if(remove){
+     const row=remove.closest('.lesson-date-row');
+     if(row&&$$('.lesson-date-row').length>1){row.remove();$$('.lesson-date-remove').forEach(x=>x.disabled=$$('.lesson-date-row').length===1);updateSeasonPhaseHint();updateBookingSummary();bookingDraftSave(step)}
+     return;
+   }
    updateBookingSummary();bookingDraftSave(step);
  });
  form.addEventListener('change',e=>{
    if(e.target.id==='people'){renderParticipants();renderCourseOptions()}
-   if(e.target.id==='lessonDate')updateSeasonPhaseHint();
+   if(e.target.classList?.contains('lesson-date-input'))updateSeasonPhaseHint();
    updateBookingSummary();bookingDraftSave(step);
  });
  form.addEventListener('input',()=>bookingDraftSave(step));
@@ -251,16 +287,16 @@ function updateTimeSlotOptions(){const s=$('#timeSlot');if(!s)return;const full=
 function renderParticipants(){const box=$('#participants');if(!box)return;const n=Math.max(1,Math.min(8,+($('#people')?.value||1)));const old=[...box.querySelectorAll('.participant')].map(x=>({name:x.querySelector('[data-p=name]')?.value||'',age:x.querySelector('[data-p=age]')?.value||'',level:x.querySelector('[data-p=level]')?.value||''}));box.innerHTML='';for(let i=0;i<n;i++){const v=old[i]||{};const div=document.createElement('div');div.className='participant';div.innerHTML=`<div class="participant-title">學員 ${i+1}</div><div class="field-grid"><div class="field"><label>姓名</label><input data-p="name" value="${escapeHtml(v.name||'')}" placeholder="可與預約人相同"></div><div class="field"><label>年齡</label><input data-p="age" inputmode="numeric" value="${escapeHtml(v.age||'')}" placeholder="例如 8"></div><div class="field" style="grid-column:1/-1"><label>程度</label><select data-p="level"><option value="first">完全沒滑過</option><option value="beginner">滑過 1 到 3 次</option><option value="control">可自行煞停轉向</option><option value="advanced">進階需求</option></select></div></div>`;box.appendChild(div);if(v.level)div.querySelector('[data-p=level]').value=v.level}}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function phaseForDate(date){for(const p of (BF.config.seasonPhases||[])){if(date>=p.start&&date<=p.end)return p}return null}
-function updateSeasonPhaseHint(){const e=$('#seasonPhaseHint'),d=$('#lessonDate')?.value;if(!e||!d)return;const p=phaseForDate(d);e.innerHTML=p?`<b>${escapeHtml(p.label)}</b><span>${escapeHtml(p.start)} – ${escapeHtml(p.end)}</span>`:''}
+function updateSeasonPhaseHint(){const e=$('#seasonPhaseHint'),dates=getLessonDates();if(!e||!dates.length)return;const phases=[...new Set(dates.map(d=>phaseForDate(d)?.label||'').filter(Boolean))];e.innerHTML=`<b>已選 ${dates.length} 個上課日</b><span>${escapeHtml(dates.join('、'))}${phases.length?`｜${escapeHtml(phases.join('／'))}`:''}</span>`}
 function privateBasePrice(region,duration){const p=BF.config.prices?.[region]||{};return duration==='half'?p.privateHalf:p.privateFull}
 function privatePrice(region,duration,people){return Number(privateBasePrice(region,duration)||0)+Math.max(0,people-3)*Number(BF.config.privateExtraPerson||1000)}
 function coursePrice(course,region,duration,people){const p=BF.config.prices?.[region]||{};if(course==='group')return Number(duration==='half'?p.groupHalf:p.groupFull)*people;if(course==='share')return Number(duration==='half'?p.shareHalf:p.shareFull);if(course==='private')return privatePrice(region,duration,people);if(course==='dual')return privatePrice(region,duration,people)+Number(duration==='half'?p.dualCoachHalf:p.dualCoachFull);return 0}
 function courseLabel(course){return({group:'初雪萌新小團班',share:'你好同學班',private:'獨自升級專屬包班',dual:'雙教練專屬包班'}[course]||course)}
 function availableCourses(people,partyType){if(people>=9)return[];if(partyType==='family'){if(people<=4)return['private'];if(people<=6)return['private','dual'];return['dual']}if(people<=2)return['group','share','private'];if(people<=4)return['group','private'];if(people===5)return['group','private','dual'];if(people===6)return['private','dual'];return['dual']}
 function renderCourseOptions(){const box=$('#courseOptions');if(!box)return;const people=+($('#people')?.value||1),partyType=choiceValue('partyType','adult'),region=choiceValue('region','yuzawa'),duration=choiceValue('duration','half');const courses=availableCourses(people,partyType);const current=box.querySelector('.course-pick.active')?.dataset.course||box.dataset.selected;const selected=courses.includes(current)?current:(courses.includes('private')&&partyType==='family'?'private':courses[0]);box.dataset.selected=selected||'';const desc={group:'成人第一次滑雪｜最多 5 人',share:'1–2 人成立｜可能與新同學共學｜最多 4 人',private:'自己的教練｜親子家庭首選｜1–6 人',dual:'兩位教練｜5–8 人｜多人或分組需求'};box.innerHTML=courses.length?courses.map(c=>`<button type="button" class="course-pick ${c===selected?'active':''}" data-course="${c}"><span>${courseLabel(c)}</span><small>${desc[c]}</small><b>${money(coursePrice(c,region,duration,people))}</b></button>`).join(''):`<div class="large-group-contact"><b>9 人以上由客服安排</b><span>我們會依人數 程度 板種與親子需求配置教練</span><a class="btn line-btn" href="${lineChatUrl('您好 我想詢問 BabyFat 9 人以上團體滑雪課程')}" target="_blank" rel="noopener">LINE 詢問團體安排</a></div>`;$$('.course-pick',box).forEach(btn=>btn.addEventListener('click',()=>{$$('.course-pick',box).forEach(x=>x.classList.remove('active'));btn.classList.add('active');box.dataset.selected=btn.dataset.course;updateBookingSummary()}));const note=$('#courseRecommendation');if(note){note.textContent=partyType==='family'?'親子家庭不安排初雪萌新小團班或你好同學班 優先讓一家人使用專屬教練一起上山與移動':(people<=2?'可依預算與專屬程度選擇三種方案':'系統已依同行人數篩選可選班別')}}
-function bookingCalc(){const region=choiceValue('region','yuzawa'),duration=choiceValue('duration','half'),board=choiceValue('board','ski'),partyType=choiceValue('partyType','adult');const people=Math.max(1,+($('#people')?.value||1));const course=$('#courseOptions')?.dataset.selected||availableCourses(people,partyType)[0]||'';const tuition=coursePrice(course,region,duration,people);const coachCount=course==='dual'?2:1;const stay=$('#stay')?.checked;const nights=Math.max(1,+($('#nights')?.value||1));const rooms=Math.max(1,+($('#stayRooms')?.value||1));const lodge=stay?(BF.config.stayRoomTwd||6500)*nights*rooms:0;const photo=$('#photo')?.checked;const photoFee=photo?(BF.config.photoTwd||13000):0;const shuttle=$('#shuttle')?.value||'none';const shuttleJpy=BF.config.shuttle?.[shuttle]||0;return{region,course,duration,board,partyType,people,coachCount,tuition,stay,nights,rooms,lodge,photo,photoFee,shuttle,shuttleJpy,totalTwd:tuition+lodge+photoFee}}
-function updateBookingSummary(){const c=bookingCalc();const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const ph=phaseForDate($('#lessonDate')?.value||'');set('#sumRegion',c.region==='yuzawa'?'越後湯澤':'輕井澤');set('#sumSeason',ph?.label||'—');set('#sumCourse',c.course?courseLabel(c.course):'請洽 LINE');set('#sumBoard',c.board==='ski'?'雙板 Ski':'單板 Snowboard');set('#sumDuration',c.duration==='half'?'半日 3H':'全日 6H 含用餐');set('#sumPeople',c.people+' 人');set('#sumCoaches',c.course==='dual'?'2 位':'1 位');set('#sumTuition',c.course?money(c.tuition):'客服報價');set('#sumLodge',c.stay?money(c.lodge):'未加購');set('#sumPhoto',c.photo?money(c.photoFee):'未加購');set('#sumTotalTwd',c.course?money(c.totalTwd):'—');set('#sumShuttle',c.shuttle==='none'?'未選擇':($('#shuttle')?.selectedOptions[0]?.text||c.shuttle)+(c.shuttleJpy?` ¥${Number(c.shuttleJpy).toLocaleString()}`:''))}
-function validateBookingStep(step){const err=$('#bookingError');if(err)err.classList.remove('show');if(step===1){const d=$('#lessonDate');if(!d?.value){showBookingError('請選擇上課日期');return false}if(d.value<d.min||d.value>d.max){showBookingError('日期需在本雪季開放期間內');return false}}if(step===2){const c=bookingCalc();if(c.people>=9){showBookingError('9 人以上請使用 LINE 客服 由團隊安排教練配置');return false}if(!c.course){showBookingError('請選擇班別');return false}if(c.partyType==='family'&&['group','share'].includes(c.course)){showBookingError('親子家庭請選擇獨自升級專屬包班或雙教練專屬包班');return false}}if(step===3){for(const id of ['contactName','phone','bookingEmail','lineName']){if(!$('#'+id)?.value.trim()){showBookingError('姓名 手機 Email 與 LINE 都是必填資料');return false}}if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('#bookingEmail').value.trim())){showBookingError('Email 格式不正確');return false}if($('#phone').value.replace(/\D/g,'').length<8){showBookingError('請填寫可聯絡的手機號碼');return false}if(!$('#lineJoined')?.checked){showBookingError('請先加入 BabyFat 官方 LINE 並勾選確認');return false}}return true}
+function bookingCalc(){const region=choiceValue('region','yuzawa'),duration=choiceValue('duration','half'),board=choiceValue('board','ski'),partyType=choiceValue('partyType','adult');const people=Math.max(1,+($('#people')?.value||1));const course=$('#courseOptions')?.dataset.selected||availableCourses(people,partyType)[0]||'';const lessonDates=getLessonDates(),dayCount=Math.max(1,lessonDates.length);const dailyTuition=coursePrice(course,region,duration,people);const tuition=dailyTuition*dayCount;const coachCount=course==='dual'?2:1;const stay=$('#stay')?.checked;const nights=Math.max(1,+($('#nights')?.value||1));const rooms=Math.max(1,+($('#stayRooms')?.value||1));const lodge=stay?(BF.config.stayRoomTwd||6500)*nights*rooms:0;const photo=$('#photo')?.checked;const photoFee=photo?(BF.config.photoTwd||13000):0;const shuttle=$('#shuttle')?.value||'none';const shuttleJpy=BF.config.shuttle?.[shuttle]||0;return{region,course,duration,board,partyType,people,coachCount,lessonDates,dayCount,dailyTuition,tuition,stay,nights,rooms,lodge,photo,photoFee,shuttle,shuttleJpy,totalTwd:tuition+lodge+photoFee}}
+function updateBookingSummary(){const c=bookingCalc();const set=(id,v)=>{const e=$(id);if(e)e.textContent=v};const phases=[...new Set(c.lessonDates.map(d=>phaseForDate(d)?.label||'').filter(Boolean))];set('#sumRegion',c.region==='yuzawa'?'越後湯澤':'輕井澤');set('#sumDates',c.lessonDates.length?`${c.lessonDates.length} 天｜${c.lessonDates.join('、')}`:'尚未選擇');set('#sumSeason',phases.join('／')||'—');set('#sumCourse',c.course?courseLabel(c.course):'請洽 LINE');set('#sumBoard',c.board==='ski'?'雙板 Ski':'單板 Snowboard');set('#sumDuration',c.duration==='half'?'半日 3H':'全日 6H 含用餐');set('#sumPeople',c.people+' 人');set('#sumCoaches',c.course==='dual'?'2 位':'1 位');set('#sumTuition',c.course?`${money(c.tuition)}（${c.dayCount} 天）`:'客服報價');set('#sumLodge',c.stay?money(c.lodge):'未加購');set('#sumPhoto',c.photo?money(c.photoFee):'未加購');set('#sumTotalTwd',c.course?money(c.totalTwd):'—');set('#sumShuttle',c.shuttle==='none'?'未選擇':($('#shuttle')?.selectedOptions[0]?.text||c.shuttle)+(c.shuttleJpy?` ¥${Number(c.shuttleJpy).toLocaleString()}`:''))}
+function validateBookingStep(step){const err=$('#bookingError');if(err)err.classList.remove('show');if(step===1){const dates=getLessonDates();if(!dates.length){showBookingError('請至少選擇 1 個上課日期');return false}if(dates.length>BF_MAX_LESSON_DAYS){showBookingError('單筆預約最多可選 10 個上課日');return false}const min=BF.config.seasonStart||'2026-12-15',max=BF.config.seasonEnd||'2027-04-30';if(dates.some(d=>d<min||d>max)){showBookingError('日期需在本雪季開放期間內');return false}}if(step===2){const c=bookingCalc();if(c.people>=9){showBookingError('9 人以上請使用 LINE 客服 由團隊安排教練配置');return false}if(!c.course){showBookingError('請選擇班別');return false}if(c.partyType==='family'&&['group','share'].includes(c.course)){showBookingError('親子家庭請選擇獨自升級專屬包班或雙教練專屬包班');return false}}if(step===3){for(const id of ['contactName','phone','bookingEmail','lineName']){if(!$('#'+id)?.value.trim()){showBookingError('姓名 手機 Email 與 LINE 都是必填資料');return false}}if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('#bookingEmail').value.trim())){showBookingError('Email 格式不正確');return false}if($('#phone').value.replace(/\D/g,'').length<8){showBookingError('請填寫可聯絡的手機號碼');return false}if(!$('#lineJoined')?.checked){showBookingError('請先加入 BabyFat 官方 LINE 並勾選確認');return false}}return true}
 
 function showBookingError(msg){const e=$('#bookingError');if(e){e.textContent=msg;e.classList.add('show')}else toast(msg)}
 async function submitBooking(){
@@ -280,7 +316,7 @@ async function submitBooking(){
   }));
   const requestKey=form.dataset.requestKey||(form.dataset.requestKey='BK_'+Date.now()+'_'+Math.random().toString(36).slice(2,10));
   const payload={
-    ...c,resort:$('#resort')?.value||'',lessonDate:$('#lessonDate')?.value||'',timeSlot:$('#timeSlot')?.value||'',
+    ...c,resort:$('#resort')?.value||'',lessonDates:c.lessonDates,lessonDate:c.lessonDates[0]||'',timeSlot:$('#timeSlot')?.value||'',
     contactName:$('#contactName')?.value.trim()||'',phone:$('#phone')?.value.trim()||'',email:$('#bookingEmail')?.value.trim()||'',
     line:$('#lineName')?.value.trim()||'',lineId:$('#lineId')?.value.trim()||'',lineJoined:!!$('#lineJoined')?.checked,notes:$('#notes')?.value.trim()||'',
     participants,termsConsent:true,privacyConsent:true,source:'website',requestKey
@@ -296,6 +332,8 @@ async function submitBooking(){
       INVALID_PHONE:'手機格式不正確',
       INVALID_EMAIL:'Email 格式不正確',
       OUTSIDE_SEASON:'目前日期不在開放雪季',
+      MISSING_LESSON_DATES:'請至少選擇 1 個上課日期',
+      TOO_MANY_LESSON_DAYS:'單筆預約最多可選 10 個上課日',
       REQUEST_TIMEOUT:'系統回應逾時 請先不要重複送出 可用 Email 或預約編號查詢'
     };
     showBookingError(map[e.message]||'預約尚未建立 請確認資料後再試');
@@ -345,7 +383,7 @@ function renderBookingMatches(bookings){
   box.innerHTML=`<div class="match-title">此 Email 找到 ${bookings.length} 筆預約</div>`+
     bookings.map((r,i)=>`
       <button class="booking-match" type="button" data-booking-match="${i}">
-        <span><b>${escapeHtml(r.bookingId)}</b><small>${escapeHtml(r.lessonDate||'')}　${escapeHtml(r.regionLabel||'')}　${escapeHtml(r.courseLabel||'')}</small></span>
+        <span><b>${escapeHtml(r.bookingId)}</b><small>${escapeHtml((r.lessonDates&&r.lessonDates.length?r.lessonDates.join('、'):r.lessonDate)||'')}　${escapeHtml(r.regionLabel||'')}　${escapeHtml(r.courseLabel||'')}</small></span>
         <em>${escapeHtml(statusText(r.bookingStatus))}</em>
       </button>`).join('');
   box.classList.add('show');
@@ -357,7 +395,7 @@ function renderBookingMatches(bookings){
 }
 function statusText(v){return({PENDING_REVIEW:'服務確認中',PENDING_PAYMENT:'等待付款',PAYMENT_REVIEW:'付款核對中',CONFIRMED:'預約完成',EXPIRED:'預約已逾期',CANCELLED:'預約已取消'}[v]||v||'—')}
 function paymentText(v){return({PENDING:'尚未付款',REVIEWING:'核對中',PAID:'已完成',EXPIRED:'已逾期'}[v]||v||'—')}
-function renderBookingReceipt(r){const box=$('#bookingResult');box.classList.add('show');$('#receiptTitle').textContent=`${r.bookingId}  ${r.regionLabel}  ${r.courseLabel}`;$('#receiptStatus').textContent=statusText(r.bookingStatus);const cells={receiptBookingStatus:statusText(r.bookingStatus),receiptPayment:paymentText(r.paymentStatus),receiptDate:(r.lessonDate||'—')+(r.seasonPhaseLabel?`｜${r.seasonPhaseLabel}`:''),receiptTime:r.timeSlotLabel||r.timeSlot||'—',receiptBoard:r.boardLabel||'—',receiptPeople:(r.peopleCount||0)+' 人',receiptCoach:(r.assignedCoach||'安排中')+(r.coachCount>1?'｜2 位教練':''),receiptStay:r.stayRequested?`${r.stayRooms} 間 ${r.stayNights} 晚`:'未加購',receiptPhoto:r.photoRequested?'已登記':'未加購'};Object.entries(cells).forEach(([id,v])=>{const e=$('#'+id);if(e)e.textContent=v});const panel=$('#paymentPanel');if(['PENDING_PAYMENT','PAYMENT_REVIEW'].includes(r.bookingStatus)){panel.classList.remove('hidden');$('#payDeadline').textContent=r.paymentDeadline||'—';$('#payAmount').textContent=money(r.totalTwd);$('#bankInfo').innerHTML=r.bank&&r.bank.account?`<strong>${escapeHtml(r.bank.bankName||'')} ${escapeHtml(r.bank.bankCode||'')}</strong><span>${escapeHtml(r.bank.account)} ${r.bank.holder?`｜${escapeHtml(r.bank.holder)}`:''}</span>`:'<strong>匯款資訊請洽客服</strong>'}else panel.classList.add('hidden');let extra=$('#bookingExtraStatus');if(!extra){extra=document.createElement('div');extra.id='bookingExtraStatus';extra.className='booking-extra-status';box.appendChild(extra)}const items=[];if(r.course==='share')items.push(`<div><b>你好同學班</b><span>預約已成立 ${r.shareGroupId?'已安排共學群組 '+escapeHtml(r.shareGroupId):'若有合適同學會由雪胖安排 沒有也照常上課'}</span></div>`);if(r.duration==='full')items.push(`<div><b>24H 延時 1 小時</b><span>${r.bonusHourStatus==='CONFIRMED'?'已確認':r.bonusHourEligible?'符合條件 請用官方 LINE 回傳付款資訊完成確認':'24 小時內付款後可申請'}</span></div>`);extra.innerHTML=items.join('');window._currentBooking=r;window.scrollTo({top:box.offsetTop-85,behavior:'smooth'})}
+function renderBookingReceipt(r){const box=$('#bookingResult');box.classList.add('show');$('#receiptTitle').textContent=`${r.bookingId}  ${r.regionLabel}  ${r.courseLabel}`;$('#receiptStatus').textContent=statusText(r.bookingStatus);const cells={receiptBookingStatus:statusText(r.bookingStatus),receiptPayment:paymentText(r.paymentStatus),receiptDate:((r.lessonDates&&r.lessonDates.length?r.lessonDates.join('、'):r.lessonDate)||'—')+(r.lessonDaysCount>1?`｜共 ${r.lessonDaysCount} 天`:'')+(r.seasonPhaseLabel?`｜${r.seasonPhaseLabel}`:''),receiptTime:r.timeSlotLabel||r.timeSlot||'—',receiptBoard:r.boardLabel||'—',receiptPeople:(r.peopleCount||0)+' 人',receiptCoach:(r.assignedCoach||'安排中')+(r.coachCount>1?'｜2 位教練':''),receiptStay:r.stayRequested?`${r.stayRooms} 間 ${r.stayNights} 晚`:'未加購',receiptPhoto:r.photoRequested?'已登記':'未加購'};Object.entries(cells).forEach(([id,v])=>{const e=$('#'+id);if(e)e.textContent=v});const panel=$('#paymentPanel');if(['PENDING_PAYMENT','PAYMENT_REVIEW'].includes(r.bookingStatus)){panel.classList.remove('hidden');$('#payDeadline').textContent=r.paymentDeadline||'—';$('#payAmount').textContent=money(r.totalTwd);$('#bankInfo').innerHTML=r.bank&&r.bank.account?`<strong>${escapeHtml(r.bank.bankName||'')} ${escapeHtml(r.bank.bankCode||'')}</strong><span>${escapeHtml(r.bank.account)} ${r.bank.holder?`｜${escapeHtml(r.bank.holder)}`:''}</span>`:'<strong>匯款資訊請洽客服</strong>'}else panel.classList.add('hidden');let extra=$('#bookingExtraStatus');if(!extra){extra=document.createElement('div');extra.id='bookingExtraStatus';extra.className='booking-extra-status';box.appendChild(extra)}const items=[];if(r.course==='share')items.push(`<div><b>你好同學班</b><span>預約已成立 ${r.shareGroupId?'已安排共學群組 '+escapeHtml(r.shareGroupId):'若有合適同學會由雪胖安排 沒有也照常上課'}</span></div>`);if(r.duration==='full')items.push(`<div><b>24H 延時 1 小時</b><span>${r.bonusHourStatus==='CONFIRMED'?'已確認':r.bonusHourEligible?'符合條件 請用官方 LINE 回傳付款資訊完成確認':'24 小時內付款後可申請'}</span></div>`);extra.innerHTML=items.join('');window._currentBooking=r;window.scrollTo({top:box.offsetTop-85,behavior:'smooth'})}
 async function submitPaymentDetails(){const r=window._currentBooking,last5=$('#last5')?.value.trim();if(!r)return;if(!/^\d{5}$/.test(last5||'')){toast('請輸入 5 碼數字');return}const b=$('#paymentBtn');b.disabled=true;try{const result=await apiRequest('submitPayment',{bookingId:r.bookingId,last5});toast('付款資料已送出');if(result?.bonusHourEligible){const msg=`您好 我已完成 BabyFat 全日課程匯款\n預約編號 ${r.bookingId}\n匯款末五碼 ${last5}\n申請 24H 免費延時 1 小時`;setTimeout(()=>{if(confirm('這筆全日課符合 24H 延時申請條件。現在開啟 LINE 回傳付款資訊嗎？'))window.open(lineChatUrl(msg),'_blank','noopener')},250)}$('#lookupQuery').value=r.bookingId;await lookupBooking()}catch(e){toast(e.message)}finally{b.disabled=false}}
 
 function setupCooperation(){const form=$('#coopForm');if(!form||form.dataset.ready)return;form.dataset.ready='1';$$('[data-partner-type]').forEach(b=>b.addEventListener('click',()=>{const type=b.dataset.partnerType;$$('[data-partner-type]').forEach(x=>x.classList.toggle('active',x===b));$$('.partner-panel').forEach(x=>x.classList.toggle('active',x.dataset.panel===type));form.dataset.type=type}));const requested=new URLSearchParams(location.search).get('type');if(requested==='business')$('[data-partner-type="business"]')?.click();$('#coopSubmit')?.addEventListener('click',submitCooperation)}

@@ -1,4 +1,4 @@
-// BabyFat V8.1.5 — Cloudflare Worker + D1
+// BabyFat V8.2.0 — Cloudflare Worker + D1
 // D1 is the transaction source of truth. Google Sheets is a mirrored operating backend.
 
 const DEFAULTS = {
@@ -78,7 +78,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.1.5"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.0"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -332,8 +332,63 @@ function seasonPhase(date,s){
 }
 function seasonPhaseLabel(v){return ({early_low:"早鳥淡季",peak:"旺季",tail_low:"尾聲淡季"}[v]||"")}
 
+
+async function ensureBookingDaysTable(env){
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS booking_days (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id TEXT NOT NULL,
+      lesson_date TEXT NOT NULL,
+      duration TEXT NOT NULL,
+      time_slot TEXT NOT NULL,
+      assigned_coach TEXT DEFAULT '',
+      second_coach TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(booking_id, lesson_date)
+    )
+  `).run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_booking_days_date ON booking_days(lesson_date)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_booking_days_booking ON booking_days(booking_id)").run();
+}
+
+function normalizeLessonDates(p,s){
+  let arr=Array.isArray(p.lessonDates)?p.lessonDates:[p.lessonDate];
+  arr=[...new Set(arr.map(x=>safeDateOnly(x)).filter(Boolean))].sort();
+  if(!arr.length){const e=new Error("MISSING_LESSON_DATES");e.status=400;throw e;}
+  if(arr.length>10){const e=new Error("TOO_MANY_LESSON_DAYS");e.status=400;throw e;}
+  for(const d of arr){
+    if(d<s.SEASON_START || d>s.SEASON_END){const e=new Error("OUTSIDE_SEASON");e.status=400;throw e;}
+  }
+  return arr;
+}
+
+async function lessonDatesForBooking(env,bookingId,fallbackDate){
+  await ensureBookingDaysTable(env);
+  const rs=await env.DB.prepare(
+    "SELECT lesson_date FROM booking_days WHERE booking_id=? AND status='ACTIVE' ORDER BY lesson_date"
+  ).bind(bookingId).all();
+  const arr=(rs.results||[]).map(x=>String(x.lesson_date||"")).filter(Boolean);
+  return arr.length?arr:(fallbackDate?[String(fallbackDate)]:[]);
+}
+
+async function replaceBookingDays(env,bookingId,lessonDates,duration,timeSlot,createdAt,updatedAt){
+  await ensureBookingDaysTable(env);
+  await env.DB.prepare("DELETE FROM booking_days WHERE booking_id=?").bind(bookingId).run();
+  if(!lessonDates.length)return;
+  const now=updatedAt||isoNow();
+  const created=createdAt||now;
+  const stmts=lessonDates.map(d=>env.DB.prepare(`
+    INSERT INTO booking_days
+      (booking_id,lesson_date,duration,time_slot,assigned_coach,second_coach,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,'','ACTIVE',?,?)
+  `).bind(bookingId,d,duration,timeSlot,'',created,now));
+  await env.DB.batch(stmts);
+}
+
 function validateBooking(p,s){
-  const required=["contactName","phone","email","line","region","lessonDate","board","course","duration","timeSlot","partyType"];
+  const required=["contactName","phone","email","line","region","board","course","duration","timeSlot","partyType"];
   for(const k of required) if(!clean(p[k])) {const e=new Error("MISSING_"+k.toUpperCase());e.status=400;throw e;}
   if(!bool(p.lineJoined)){const e=new Error("LINE_NOT_CONFIRMED");e.status=400;throw e;}
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean(p.email,180))){const e=new Error("INVALID_EMAIL");e.status=400;throw e;}
@@ -352,8 +407,7 @@ function validateBooking(p,s){
   if(course==="share" && people>2){const e=new Error("SHARE_MAX_2_INITIAL");e.status=400;throw e;}
   if(course==="private" && people>6){const e=new Error("PRIVATE_MAX_6");e.status=400;throw e;}
   if(course==="dual" && (people<5||people>8)){const e=new Error("DUAL_5_TO_8");e.status=400;throw e;}
-  const d=safeDateOnly(p.lessonDate);
-  if(!d || d<s.SEASON_START || d>s.SEASON_END){const e=new Error("OUTSIDE_SEASON");e.status=400;throw e;}
+  normalizeLessonDates(p,s);
   if(!bool(p.termsConsent)||!bool(p.privacyConsent)){const e=new Error("CONSENT_REQUIRED");e.status=400;throw e;}
 }
 
@@ -364,14 +418,17 @@ function calculate(p,s){
   const duration=clean(p.duration,20).toUpperCase();
   const basePrivate=num(s[`${region}_PRIVATE_${duration}`],0);
   const extra=Math.max(0,people-3)*num(s.PRIVATE_EXTRA_PERSON,1000);
-  let tuition=0,coachCount=1;
-  if(course==="group") tuition=num(s[`${region}_GROUP_${duration}`],0)*people;
-  else if(course==="share") tuition=num(s[`${region}_SHARE_${duration}`],0);
-  else if(course==="private") tuition=basePrivate+extra;
+  let dailyTuition=0,coachCount=1;
+  if(course==="group") dailyTuition=num(s[`${region}_GROUP_${duration}`],0)*people;
+  else if(course==="share") dailyTuition=num(s[`${region}_SHARE_${duration}`],0);
+  else if(course==="private") dailyTuition=basePrivate+extra;
   else if(course==="dual"){
     coachCount=2;
-    tuition=basePrivate+extra+num(s[`${region}_DUAL_COACH_${duration}`],basePrivate);
+    dailyTuition=basePrivate+extra+num(s[`${region}_DUAL_COACH_${duration}`],basePrivate);
   }
+  const lessonDates=normalizeLessonDates(p,s);
+  const dayCount=lessonDates.length;
+  const tuition=dailyTuition*dayCount;
   const stay=bool(p.stay);
   const nights=stay?Math.max(1,Math.floor(num(p.nights,1))):0;
   const rooms=stay?Math.max(1,Math.floor(num(p.rooms,1))):0;
@@ -380,16 +437,24 @@ function calculate(p,s){
   const photoTwd=photo?num(s.PHOTO_TWD,13000):0;
   const shuttle=clean(p.shuttle||"none",30);
   const shuttleMap={none:0,station:0,naeba:0,tashiro:0,kagura:0,kandatsu:num(s.SHUTTLE_KANDATSU_JPY,3500),iwappara:num(s.SHUTTLE_IWAPPARA_JPY,5000),ishiuchi:num(s.SHUTTLE_ISHIUCHI_JPY,6000)};
-  return {people,tuition,coachCount,nights,rooms,stayTwd,photoTwd,shuttle,shuttleJpy:shuttleMap[shuttle]||0,totalTwd:tuition+stayTwd+photoTwd};
+  return {people,tuition,dailyTuition,lessonDates,dayCount,coachCount,nights,rooms,stayTwd,photoTwd,shuttle,shuttleJpy:shuttleMap[shuttle]||0,totalTwd:tuition+stayTwd+photoTwd};
 }
 
 async function createBooking(env,p){
   const s=await getSettings(env);
   validateBooking(p,s);
+  await ensureBookingDaysTable(env);
+  const lessonDates=normalizeLessonDates(p,s);
   const requestKey=clean(p.requestKey,120);
-  if(requestKey){const existing=await env.DB.prepare("SELECT * FROM bookings WHERE request_key=?").bind(requestKey).first();if(existing)return bookingPublic(existing,s);}
+  if(requestKey){
+    const existing=await env.DB.prepare("SELECT * FROM bookings WHERE request_key=?").bind(requestKey).first();
+    if(existing){
+      const days=await lessonDatesForBooking(env,existing.booking_id,existing.lesson_date);
+      return bookingPublic(existing,s,days);
+    }
+  }
 
-  const c=calculate(p,s),now=isoNow(),id=bookingId(p.lessonDate);
+  const c=calculate({...p,lessonDates},s),now=isoNow(),id=bookingId(lessonDates[0]);
   const hasAddon=bool(p.stay)||bool(p.photo)||c.shuttle!=="none";
   const status=hasAddon?"PENDING_REVIEW":"PENDING_PAYMENT";
   const deadline=hasAddon?null:new Date(Date.now()+num(s.PAYMENT_HOURS,24)*3600000).toISOString();
@@ -398,12 +463,12 @@ async function createBooking(env,p){
     booking_id:id,request_key:requestKey||null,created_at:now,updated_at:now,
     booking_status:status,payment_status:"PENDING",payment_deadline:deadline,payment_submitted_at:null,payment_last5:null,paid_at:null,
     contact_name:clean(p.contactName,120),phone:clean(p.phone,50),email:clean(p.email,180),email_norm:emailNorm(p.email),line_name:clean(p.line,120),line_id:clean(p.lineId,120),line_joined:1,line_contact_status:"PENDING_CONFIRMATION",
-    region:clean(p.region,20),resort:clean(p.resort,120),lesson_date:safeDateOnly(p.lessonDate),board:clean(p.board,20),course,duration,time_slot:clean(p.timeSlot,30),people_count:c.people,tuition_twd:c.tuition,
+    region:clean(p.region,20),resort:clean(p.resort,120),lesson_date:lessonDates[0],board:clean(p.board,20),course,duration,time_slot:clean(p.timeSlot,30),people_count:c.people,tuition_twd:c.tuition,
     stay_requested:bool(p.stay)?1:0,stay_nights:c.nights,stay_rooms:c.rooms,stay_twd:c.stayTwd,stay_status:bool(p.stay)?"REQUESTED":"NOT_REQUESTED",
     photo_requested:bool(p.photo)?1:0,photo_twd:c.photoTwd,photo_status:bool(p.photo)?"REQUESTED":"NOT_REQUESTED",
     shuttle:c.shuttle,shuttle_jpy:c.shuttleJpy,shuttle_status:c.shuttle!=="none"?"REQUESTED":"NOT_REQUESTED",
     total_twd:c.totalTwd,needs_review:hasAddon?1:0,assigned_coach:null,notes:clean(p.notes,1500),privacy_consent:1,terms_consent:1,source:"website",sync_status:"PENDING",
-    party_type:clean(p.partyType,20),season_phase:seasonPhase(p.lessonDate,s),coach_count:c.coachCount,
+    party_type:clean(p.partyType,20),season_phase:seasonPhase(lessonDates[0],s),coach_count:c.coachCount,
     share_status:course==="share"?"AVAILABLE":"NOT_APPLICABLE",share_group_id:null,
     bonus_hour_eligible:0,bonus_hour_status:duration==="full"?"PENDING_PAYMENT":"NOT_APPLICABLE"
   };
@@ -419,19 +484,27 @@ async function createBooking(env,p){
     const values=cols.map(k=>row[k]===undefined?null:row[k]);
     await env.DB.prepare(`INSERT INTO bookings (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`).bind(...values).run();
   }catch(err){
-    if(requestKey){const existing=await env.DB.prepare("SELECT * FROM bookings WHERE request_key=?").bind(requestKey).first();if(existing)return bookingPublic(existing,s);}
+    if(requestKey){
+      const existing=await env.DB.prepare("SELECT * FROM bookings WHERE request_key=?").bind(requestKey).first();
+      if(existing){
+        const days=await lessonDatesForBooking(env,existing.booking_id,existing.lesson_date);
+        return bookingPublic(existing,s,days);
+      }
+    }
     throw err;
   }
+
+  await replaceBookingDays(env,id,lessonDates,duration,clean(p.timeSlot,30),now,now);
 
   const participants=Array.isArray(p.participants)?p.participants.slice(0,c.people):[];
   if(participants.length){
     const statements=participants.map((x,i)=>env.DB.prepare("INSERT INTO participants (booking_id,participant_no,name,age,level,notes,created_at) VALUES (?,?,?,?,?,?,?)").bind(id,i+1,clean(x.name,120),clean(x.age,20),clean(x.level,50),clean(x.notes,500),now));
     await env.DB.batch(statements);
   }
-  const syncPayload={...row,participants:participants.map((x,i)=>({booking_id:id,participant_no:i+1,name:clean(x.name,120),age:clean(x.age,20),level:clean(x.level,50),notes:clean(x.notes,500),created_at:now}))};
+  const syncPayload={...row,lesson_dates:lessonDates.join(","),lesson_days_count:lessonDates.length,participants:participants.map((x,i)=>({booking_id:id,participant_no:i+1,name:clean(x.name,120),age:clean(x.age,20),level:clean(x.level,50),notes:clean(x.notes,500),created_at:now}))};
   await enqueueSync(env,"booking",id,syncPayload);
   const stored=await env.DB.prepare("SELECT * FROM bookings WHERE booking_id=?").bind(id).first();
-  return bookingPublic(stored,s);
+  return bookingPublic(stored,s,lessonDates);
 }
 
 async function lookupBookings(env,q){
@@ -447,7 +520,12 @@ async function lookupBookings(env,q){
     if(one) rows=[one];
   }
   if(!rows.length){const e=new Error("NOT_FOUND");e.status=404;throw e;}
-  return {mode:rows.length>1?"multiple":"single",bookings:rows.map(r=>bookingPublic(r,s))};
+  const out=[];
+  for(const r of rows){
+    const days=await lessonDatesForBooking(env,r.booking_id,r.lesson_date);
+    out.push(bookingPublic(r,s,days));
+  }
+  return {mode:rows.length>1?"multiple":"single",bookings:out};
 }
 
 async function submitPayment(env,p){
@@ -492,13 +570,13 @@ async function createPartnership(env,p){
   return {partnershipId:id};
 }
 
-function bookingPublic(b,s){
+function bookingPublic(b,s,lessonDates){
   const status=String(b.booking_status||"");
   const exposeBank=["PENDING_PAYMENT","PAYMENT_REVIEW","CONFIRMED"].includes(status);
   const labels={group:"初雪萌新小團班",share:"你好同學班",private:"獨自升級專屬包班",dual:"雙教練專屬包班"};
   return {
     bookingId:String(b.booking_id||""),bookingStatus:status,paymentStatus:String(b.payment_status||""),paymentDeadline:b.payment_deadline||"",email:String(b.email||""),
-    region:String(b.region||""),regionLabel:b.region==="karuizawa"?"輕井澤":"越後湯澤",resort:String(b.resort||""),lessonDate:String(b.lesson_date||""),
+    region:String(b.region||""),regionLabel:b.region==="karuizawa"?"輕井澤":"越後湯澤",resort:String(b.resort||""),lessonDate:String(b.lesson_date||""),lessonDates:Array.isArray(lessonDates)&&lessonDates.length?lessonDates:[String(b.lesson_date||"")].filter(Boolean),lessonDaysCount:Array.isArray(lessonDates)&&lessonDates.length?lessonDates.length:(b.lesson_date?1:0),
     seasonPhase:String(b.season_phase||""),seasonPhaseLabel:seasonPhaseLabel(b.season_phase),partyType:String(b.party_type||"adult"),partyTypeLabel:b.party_type==="family"?"親子／含兒童":"成人同行",
     board:String(b.board||""),boardLabel:b.board==="snowboard"?"單板 Snowboard":"雙板 Ski",course:String(b.course||""),courseLabel:labels[b.course]||String(b.course||""),
     duration:String(b.duration||""),timeSlot:String(b.time_slot||""),timeSlotLabel:slotLabel(b.time_slot,b.duration),peopleCount:Number(b.people_count||0),coachCount:Number(b.coach_count||1),
@@ -614,7 +692,29 @@ async function pullBookingsForSheet(env,updatedAfter,limit){
     byId.get(id).push(p);
   }
 
-  const out = bookings.map(b=>({...b,participants:byId.get(String(b.booking_id||""))||[]}));
+  await ensureBookingDaysTable(env);
+  const daysById=new Map();
+  if(ids.length){
+    const placeholders = ids.map(()=>"?").join(",");
+    const dr=await env.DB.prepare(`
+      SELECT booking_id,lesson_date
+      FROM booking_days
+      WHERE booking_id IN (${placeholders}) AND status='ACTIVE'
+      ORDER BY booking_id,lesson_date
+    `).bind(...ids).all();
+    for(const d of (dr.results||[])){
+      const id=String(d.booking_id||"");
+      if(!daysById.has(id))daysById.set(id,[]);
+      daysById.get(id).push(String(d.lesson_date||""));
+    }
+  }
+
+  const out = bookings.map(b=>{
+    const id=String(b.booking_id||"");
+    const dates=(daysById.get(id)||[]);
+    const lessonDates=dates.length?dates:[String(b.lesson_date||"")].filter(Boolean);
+    return {...b,lesson_dates:lessonDates.join(","),lesson_days_count:lessonDates.length,participants:byId.get(id)||[]};
+  });
   return {
     bookings:out,
     count:out.length,
@@ -639,7 +739,7 @@ function normalizeSheetBooking(b){
   const out={};
   const keys=[
     "booking_id","created_at","updated_at","booking_status","payment_status","payment_deadline","payment_submitted_at","payment_last5","paid_at",
-    "contact_name","phone","email","line_name","line_id","line_contact_status","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
+    "contact_name","phone","email","line_name","line_id","line_contact_status","region","resort","lesson_date","lesson_dates","board","course","duration","time_slot","people_count","tuition_twd",
     "stay_requested","stay_nights","stay_rooms","stay_twd","stay_status","photo_requested","photo_twd","photo_status","shuttle","shuttle_jpy","shuttle_status",
     "total_twd","needs_review","assigned_coach","notes","privacy_consent","terms_consent","source",
     "party_type","season_phase","coach_count","share_status","share_group_id","bonus_hour_eligible","bonus_hour_status"
@@ -694,6 +794,12 @@ async function upsertBookingFromSheet(env,b){
   const updateCols=cols.filter(k=>!["booking_id","request_key","created_at"].includes(k));
   const sql=`INSERT INTO bookings (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')}) ON CONFLICT(booking_id) DO UPDATE SET ${updateCols.map(k=>`${k}=excluded.${k}`).join(',')},sync_status='SYNCED'`;
   await env.DB.prepare(sql).bind(...cols.map(k=>v[k]===undefined?null:v[k])).run();
+
+  const rawDates=String(r.lesson_dates||"").split(/[，,\n\s]+/).map(x=>normalizeDateOnly(x)).filter(Boolean);
+  const lessonDates=[...new Set((rawDates.length?rawDates:[r.lesson_date]).filter(Boolean))].sort().slice(0,10);
+  if(lessonDates.length){
+    await replaceBookingDays(env,r.booking_id,lessonDates,clean(r.duration,20),clean(r.time_slot,30),r.created_at,r.updated_at);
+  }
   return {bookingId:r.booking_id};
 }
 

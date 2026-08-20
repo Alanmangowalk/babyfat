@@ -117,3 +117,17 @@
   body.booking-page .mobile-bar{display:none!important}
   body.booking-page .line-fab{display:none!important}
 }
+
+/* V8.2.0 multi-day booking */
+.lesson-dates{display:flex;flex-direction:column;gap:10px}
+.lesson-date-row{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:center}
+.lesson-date-row input{width:100%}
+.lesson-date-remove{height:46px;border:1px solid #d7e2eb;background:#fff;border-radius:12px;font-size:24px;color:#62798b;cursor:pointer}
+.lesson-date-remove:disabled{opacity:.3;cursor:not-allowed}
+.lesson-date-add{margin-top:10px;width:max-content}
+.lesson-dates-field{grid-column:1/-1}
+#sumDates{max-width:66%;text-align:right;line-height:1.35}
+@media(max-width:680px){
+  .lesson-date-add{width:100%}
+  #sumDates{max-width:70%;font-size:14px}
+}
