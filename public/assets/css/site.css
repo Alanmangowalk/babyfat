@@ -118,16 +118,64 @@
   body.booking-page .line-fab{display:none!important}
 }
 
-/* V8.2.0 multi-day booking */
-.lesson-dates{display:flex;flex-direction:column;gap:10px}
-.lesson-date-row{display:grid;grid-template-columns:1fr 46px;gap:8px;align-items:center}
-.lesson-date-row input{width:100%}
-.lesson-date-remove{height:46px;border:1px solid #d7e2eb;background:#fff;border-radius:12px;font-size:24px;color:#62798b;cursor:pointer}
-.lesson-date-remove:disabled{opacity:.3;cursor:not-allowed}
-.lesson-date-add{margin-top:10px;width:max-content}
+
+/* V8.2.1 direct multi-select calendar */
 .lesson-dates-field{grid-column:1/-1}
-#sumDates{max-width:66%;text-align:right;line-height:1.35}
+.calendar-heading-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.calendar-heading-row label{display:block;margin-bottom:5px}
+.calendar-count{flex:0 0 auto;border-radius:999px;background:#eef4f8;color:#092846;font-weight:800;font-size:13px;padding:7px 11px;white-space:nowrap}
+
+.calendar-howto{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.calendar-howto span{display:flex;align-items:center;gap:7px;background:#f6f8fa;border:1px solid #e4ebf0;border-radius:12px;padding:9px 10px;font-size:13px;color:#536c80}
+.calendar-howto b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#092846;color:#fff;font-size:12px}
+
+.bf-calendar{border:1px solid #dbe5ec;border-radius:20px;padding:14px;background:#fff;box-shadow:0 8px 24px rgba(9,40,70,.06)}
+.calendar-nav{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;margin-bottom:8px}
+.calendar-nav strong{text-align:center;font-size:18px;color:#092846}
+.calendar-arrow{height:42px;width:42px;border:0;border-radius:50%;background:#f2f6f9;color:#092846;font-size:30px;line-height:1;cursor:pointer}
+.calendar-arrow:disabled{opacity:.25;cursor:not-allowed}
+.calendar-weekdays,.calendar-days{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.calendar-weekdays{margin-bottom:5px}
+.calendar-weekdays span{text-align:center;color:#7890a2;font-size:12px;font-weight:700;padding:8px 0}
+.calendar-blank{aspect-ratio:1/1}
+.calendar-day{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;aspect-ratio:1/1;border:1px solid transparent;border-radius:13px;background:#fff;color:#173650;cursor:pointer;font:inherit}
+.calendar-day>span{font-size:16px;font-weight:750}
+.calendar-day i{font-style:normal;font-size:8px;line-height:1;color:#8295a4;white-space:nowrap}
+.calendar-day:not(.disabled):hover{background:#f3f7fa;border-color:#dae5ed}
+.calendar-day.selected{background:#ff7117;border-color:#ff7117;color:#fff;box-shadow:0 5px 12px rgba(255,113,23,.22)}
+.calendar-day.selected i{color:#fff}
+.calendar-day.disabled{opacity:.22;cursor:not-allowed;background:#f7f8f9}
+
+.selected-date-panel{margin-top:12px;padding:13px 14px;border-radius:15px;background:#f7fafc;border:1px solid #e1eaf0}
+.selected-date-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.selected-date-head b{color:#092846}
+.text-button{border:0;background:transparent;color:#6b8192;font-weight:700;padding:4px;cursor:pointer}
+.text-button:disabled{opacity:.35;cursor:not-allowed}
+.selected-date-chips{display:flex;flex-wrap:wrap;gap:7px}
+.selected-date-chip{border:0;background:#092846;color:#fff;border-radius:999px;padding:7px 10px;font-weight:800;cursor:pointer}
+.selected-date-chip span{opacity:.75;margin-left:5px}
+.selected-date-empty{font-size:13px;color:#8497a6}
+
+.multiday-rule-card{margin-top:14px;border-left:4px solid #ff7117;background:#fff9f4;padding:14px 15px;border-radius:0 14px 14px 0;color:#40596c}
+.multiday-rule-card>b{display:block;color:#092846;font-size:16px;margin-bottom:7px}
+.multiday-rule-card p{margin:6px 0;font-size:13px;line-height:1.65}
+.multiday-rule-card strong{color:#092846}
+.rule-examples{display:grid;gap:5px;margin:9px 0}
+.rule-examples span{display:block;font-size:13px;line-height:1.45}
+.rule-ok{color:#315e4a}
+.rule-no{color:#a34b3b}
+.rule-help{border-top:1px dashed #efc8aa;padding-top:8px}
+#sumDates{max-width:68%;text-align:right;line-height:1.35}
+
 @media(max-width:680px){
-  .lesson-date-add{width:100%}
-  #sumDates{max-width:70%;font-size:14px}
+  .calendar-heading-row{align-items:flex-start}
+  .calendar-howto{grid-template-columns:1fr;gap:6px}
+  .calendar-howto span{padding:8px 10px}
+  .bf-calendar{padding:10px;border-radius:16px}
+  .calendar-weekdays,.calendar-days{gap:3px}
+  .calendar-day{border-radius:10px}
+  .calendar-day>span{font-size:15px}
+  .calendar-day i{display:none}
+  .selected-date-head{align-items:center}
+  #sumDates{max-width:72%;font-size:14px}
 }

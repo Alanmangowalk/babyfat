@@ -116,27 +116,114 @@ window.setRegion=setRegionPrices;
 window.addEventListener('babyfat:config',()=>{const active=$('.region-toggle button.active')?.dataset.region||'yuzawa';setRegionPrices(active);setupSeasonDates()});
 
 const BF_MAX_LESSON_DAYS=10;
-function getLessonDates(){
-  return [...new Set($$('.lesson-date-input').map(x=>x.value).filter(Boolean))].sort();
+let BF_SELECTED_DATES=[];
+let BF_CALENDAR_VIEW='';
+
+function isoDateLocal(y,m,d){
+  return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
-function renderLessonDateRows(values){
-  const box=$('#lessonDates');if(!box)return;
-  const min=BF.config.seasonStart||'2026-12-15',max=BF.config.seasonEnd||'2027-04-30';
-  const vals=(Array.isArray(values)&&values.length?values:[min]).slice(0,BF_MAX_LESSON_DAYS);
-  box.innerHTML='';
-  vals.forEach((v,i)=>{
-    const row=document.createElement('div');row.className='lesson-date-row';
-    row.innerHTML=`<input class="lesson-date-input" type="date" min="${min}" max="${max}" value="${escapeHtml(v||min)}"><button type="button" class="lesson-date-remove" aria-label="移除日期" ${vals.length===1?'disabled':''}>×</button>`;
-    box.appendChild(row);
-  });
+function dateParts(iso){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?{y:+m[1],m:+m[2]-1,d:+m[3]}:null;
+}
+function monthKey(y,m){return `${y}-${String(m+1).padStart(2,'0')}`}
+function seasonBounds(){
+  return {
+    min:String(BF.config.seasonStart||'2026-12-15'),
+    max:String(BF.config.seasonEnd||'2027-04-30')
+  };
+}
+function getLessonDates(){return [...BF_SELECTED_DATES].sort()}
+function setLessonDates(values,{keepView=false}={}){
+  const {min,max}=seasonBounds();
+  const valid=[...new Set((Array.isArray(values)?values:[])
+    .map(x=>String(x||'').slice(0,10))
+    .filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)&&x>=min&&x<=max))]
+    .sort()
+    .slice(0,BF_MAX_LESSON_DAYS);
+  BF_SELECTED_DATES=valid;
+  if(!keepView){
+    const basis=valid[0]||min;
+    BF_CALENDAR_VIEW=basis.slice(0,7);
+  }
+  renderBookingCalendar();
 }
 function setupSeasonDates(){
-  const min=BF.config.seasonStart||'2026-12-15',max=BF.config.seasonEnd||'2027-04-30';
-  if(!$('#lessonDates'))return;
-  if(!$$('.lesson-date-input').length)renderLessonDateRows([min]);
-  $$('.lesson-date-input').forEach(d=>{d.min=min;d.max=max;if(!d.value||d.value<min||d.value>max)d.value=min});
+  if(!$('#lessonCalendar'))return;
+  const {min}=seasonBounds();
+  if(!BF_CALENDAR_VIEW)BF_CALENDAR_VIEW=(BF_SELECTED_DATES[0]||min).slice(0,7);
+  renderBookingCalendar();
 }
+function calendarViewParts(){
+  const p=String(BF_CALENDAR_VIEW||seasonBounds().min.slice(0,7)).match(/^(\d{4})-(\d{2})$/);
+  return p?{y:+p[1],m:+p[2]-1}:dateParts(seasonBounds().min);
+}
+function shiftCalendarMonth(delta){
+  const {min,max}=seasonBounds();
+  const v=calendarViewParts();
+  const d=new Date(v.y,v.m+delta,1);
+  const target=monthKey(d.getFullYear(),d.getMonth());
+  const minMonth=min.slice(0,7),maxMonth=max.slice(0,7);
+  if(target<minMonth||target>maxMonth)return;
+  BF_CALENDAR_VIEW=target;
+  renderBookingCalendar();
+}
+function toggleLessonDate(iso){
+  const {min,max}=seasonBounds();
+  if(!iso||iso<min||iso>max)return;
+  const set=new Set(BF_SELECTED_DATES);
+  if(set.has(iso))set.delete(iso);
+  else{
+    if(set.size>=BF_MAX_LESSON_DAYS){toast(`單筆預約最多可選 ${BF_MAX_LESSON_DAYS} 個上課日`);return}
+    set.add(iso);
+  }
+  BF_SELECTED_DATES=[...set].sort();
+  renderBookingCalendar();
+}
+function formatShortDate(iso){
+  const p=dateParts(iso);return p?`${p.m+1}/${p.d}`:iso;
+}
+function renderBookingCalendar(){
+  const box=$('#calendarDays'),label=$('#calendarMonthLabel');
+  if(!box||!label)return;
+  const {min,max}=seasonBounds();
+  const v=calendarViewParts();
+  const first=new Date(v.y,v.m,1);
+  const daysInMonth=new Date(v.y,v.m+1,0).getDate();
+  const startDay=first.getDay();
+  label.textContent=`${v.y} 年 ${v.m+1} 月`;
 
+  let cells='';
+  for(let i=0;i<startDay;i++)cells+='<span class="calendar-blank"></span>';
+  for(let d=1;d<=daysInMonth;d++){
+    const iso=isoDateLocal(v.y,v.m,d);
+    const disabled=iso<min||iso>max;
+    const selected=BF_SELECTED_DATES.includes(iso);
+    const phase=phaseForDate(iso);
+    cells+=`<button type="button" class="calendar-day${selected?' selected':''}${disabled?' disabled':''}" data-date="${iso}" ${disabled?'disabled':''} aria-pressed="${selected?'true':'false'}">
+      <span>${d}</span>${!disabled&&phase?`<i>${escapeHtml(phase.label.replace('淡季',''))}</i>`:''}
+    </button>`;
+  }
+  box.innerHTML=cells;
+
+  const minMonth=min.slice(0,7),maxMonth=max.slice(0,7);
+  const prev=$('#calendarPrev'),next=$('#calendarNext');
+  if(prev)prev.disabled=BF_CALENDAR_VIEW<=minMonth;
+  if(next)next.disabled=BF_CALENDAR_VIEW>=maxMonth;
+
+  const dates=getLessonDates();
+  const count=$('#calendarCount'),title=$('#selectedDateTitle'),chips=$('#selectedDateChips'),clear=$('#clearLessonDates');
+  if(count)count.textContent=dates.length?`已選 ${dates.length} 天`:'尚未選擇';
+  if(title)title.textContent=dates.length?`已選 ${dates.length} 個上課日`:'尚未選擇上課日';
+  if(clear)clear.disabled=!dates.length;
+  if(chips){
+    chips.innerHTML=dates.length
+      ?dates.map(d=>`<button type="button" class="selected-date-chip" data-remove-date="${d}">${escapeHtml(formatShortDate(d))}<span>×</span></button>`).join('')
+      :'<span class="selected-date-empty">請從上方月曆點選日期</span>';
+  }
+  updateSeasonPhaseHint();
+  updateBookingSummary();
+}
 
 const BF_BOOKING_DRAFT_KEY='babyfat_booking_draft_v815';
 function bookingDraftLoad(){
@@ -191,7 +278,7 @@ function applyBookingDraftBase(d){
   setChoiceDraft('partyType',d.partyType);
   setChoiceDraft('board',d.board);
   setChoiceDraft('duration',d.duration);
-  if(Array.isArray(d.lessonDates)&&d.lessonDates.length)renderLessonDateRows(d.lessonDates);else if(d.lessonDate)renderLessonDateRows([d.lessonDate]);
+  if(Array.isArray(d.lessonDates)&&d.lessonDates.length)setLessonDates(d.lessonDates);else if(d.lessonDate)setLessonDates([d.lessonDate]);
   if($('#people')&&d.people)$('#people').value=d.people;
 }
 function applyBookingDraftDetails(d){
@@ -242,33 +329,28 @@ function setupBooking(){
  show(false);
 
  form.addEventListener('click',e=>{
-   const b=e.target.closest('.choice');if(!b)return;
+   const prev=e.target.closest('#calendarPrev');
+   if(prev){shiftCalendarMonth(-1);bookingDraftSave(step);return}
+   const next=e.target.closest('#calendarNext');
+   if(next){shiftCalendarMonth(1);bookingDraftSave(step);return}
+   const day=e.target.closest('.calendar-day[data-date]');
+   if(day&&!day.disabled){toggleLessonDate(day.dataset.date);bookingDraftSave(step);return}
+   const chip=e.target.closest('[data-remove-date]');
+   if(chip){toggleLessonDate(chip.dataset.removeDate);bookingDraftSave(step);return}
+   const clear=e.target.closest('#clearLessonDates');
+   if(clear){setLessonDates([],{keepView:true});bookingDraftSave(step);return}
+
+   const b=e.target.closest('.choice');
+   if(!b)return;
    const g=b.dataset.group;
    if(g){$$(`.choice[data-group="${g}"]`,form).forEach(x=>x.classList.remove('active'));b.classList.add('active')}
    if(g==='region')updateResortOptions();
    if(g==='duration')updateTimeSlotOptions();
    if(['region','partyType','board','duration'].includes(g))renderCourseOptions();
-   const add=e.target.closest('#addLessonDate');
-   const remove=e.target.closest('.lesson-date-remove');
-   if(add){
-     const dates=getLessonDates();
-     if(dates.length>=BF_MAX_LESSON_DAYS){toast('單筆預約最多可選 10 個上課日');return}
-     const base=dates[dates.length-1]||BF.config.seasonStart||'2026-12-15';
-     const next=new Date(base+'T00:00:00');next.setDate(next.getDate()+1);
-     const nextVal=next.toISOString().slice(0,10);
-     renderLessonDateRows([...dates,nextVal<=String(BF.config.seasonEnd||'2027-04-30')?nextVal:base]);
-     setupSeasonDates();updateSeasonPhaseHint();updateBookingSummary();bookingDraftSave(step);return;
-   }
-   if(remove){
-     const row=remove.closest('.lesson-date-row');
-     if(row&&$$('.lesson-date-row').length>1){row.remove();$$('.lesson-date-remove').forEach(x=>x.disabled=$$('.lesson-date-row').length===1);updateSeasonPhaseHint();updateBookingSummary();bookingDraftSave(step)}
-     return;
-   }
    updateBookingSummary();bookingDraftSave(step);
  });
  form.addEventListener('change',e=>{
    if(e.target.id==='people'){renderParticipants();renderCourseOptions()}
-   if(e.target.classList?.contains('lesson-date-input'))updateSeasonPhaseHint();
    updateBookingSummary();bookingDraftSave(step);
  });
  form.addEventListener('input',()=>bookingDraftSave(step));

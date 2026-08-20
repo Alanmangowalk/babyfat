@@ -1,4 +1,4 @@
-// BabyFat V8.2.0 — Cloudflare Worker + D1
+// BabyFat V8.2.1 — Cloudflare Worker + D1
 // D1 is the transaction source of truth. Google Sheets is a mirrored operating backend.
 
 const DEFAULTS = {
@@ -78,7 +78,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.0"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.1"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
