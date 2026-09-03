@@ -16,7 +16,7 @@
     }
   ],
   "vars": {
-    "GAS_SYNC_URL": "https://script.google.com/macros/s/AKfycbxGUbFbAjcaHoQebNL-mMOTRV1uLkeNogy5_ojZ36_S9ruB7H-JO1wFZ5xAuYsoiWYKw/exec"
+    "GAS_SYNC_URL": "https://script.google.com/macros/s/AKfycbxGUbFbAjcaHoQebNL-mnMOTRV1uLkeNogy5_ojZ36_S9ruB7H-JO1wFZ5xAuYsoiWYKw/exec"
   },
   "triggers": {
     "crons": [
