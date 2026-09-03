@@ -1,6 +1,7 @@
-// BabyFat V8.2.2 — Cloudflare Worker + D1
+// BabyFat V8.2.3 — Cloudflare Worker + D1
 // D1 is the transaction source of truth. Google Sheets is a mirrored operating backend.
 // V8.2.2: canonical Taipei date-only handling, complete multi-day sync, cascade delete, safe diagnostics.
+// V8.2.3: throttle scheduled D1->GAS sync to stay below Worker subrequest limits.
 
 const DEFAULTS = {
   SEASON_START: "2026-12-15",
@@ -68,10 +69,16 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(expireBookings(env));
-    ctx.waitUntil(flushSyncQueue(env, 30));
+    ctx.waitUntil(runScheduledMaintenance(env));
   }
 };
+
+async function runScheduledMaintenance(env){
+  // Keep one scheduled chain per invocation so D1 + GAS requests do not
+  // compete for the same Cloudflare Worker subrequest budget.
+  await expireBookings(env);
+  await flushSyncQueue(env,8);
+}
 
 async function handleApi(request, env, ctx, url) {
   const path = url.pathname;
@@ -79,7 +86,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.2"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.3"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -671,14 +678,13 @@ async function expireBookings(env){
   const now=isoNow();
   const due=await env.DB.prepare(`SELECT booking_id FROM bookings
     WHERE booking_status='PENDING_PAYMENT' AND payment_status='PENDING'
-    AND payment_deadline IS NOT NULL AND payment_deadline<? LIMIT 200`).bind(now).all();
+    AND payment_deadline IS NOT NULL AND payment_deadline<? LIMIT 5`).bind(now).all();
   for(const x of (due.results||[])){
     await env.DB.prepare("UPDATE bookings SET booking_status='EXPIRED',payment_status='EXPIRED',updated_at=?,sync_status='PENDING' WHERE booking_id=?")
       .bind(now,x.booking_id).run();
     const row=await env.DB.prepare("SELECT * FROM bookings WHERE booking_id=?").bind(x.booking_id).first();
     if(row)await enqueueSync(env,"payment",x.booking_id,row);
   }
-  await flushSyncQueue(env,30);
 }
 
 async function pullBookingsForSheet(env,updatedAfter,limit){
