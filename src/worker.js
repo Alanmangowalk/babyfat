@@ -1,5 +1,6 @@
-// BabyFat V8.2.1 — Cloudflare Worker + D1
+// BabyFat V8.2.2 — Cloudflare Worker + D1
 // D1 is the transaction source of truth. Google Sheets is a mirrored operating backend.
+// V8.2.2: canonical Taipei date-only handling, complete multi-day sync, cascade delete, safe diagnostics.
 
 const DEFAULTS = {
   SEASON_START: "2026-12-15",
@@ -78,7 +79,7 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === "/api/health" && request.method === "GET") {
     const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first();
-    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.1"}});
+    return json({ok:true,data:{backend:"Cloudflare D1",bookings:Number(row?.n||0),version:"8.2.2"}});
   }
 
   if (path === "/api/config" && request.method === "GET") {
@@ -123,7 +124,28 @@ async function handleApi(request, env, ctx, url) {
 
     if (path === "/api/internal/booking-update" && request.method === "POST") {
       const payload = await readJson(request);
-      const data = await upsertBookingFromSheet(env,payload.booking||payload);
+      const booking = payload.booking || payload;
+      const data = await upsertBookingFromSheet(env,booking);
+      if (Array.isArray(payload.participants)) {
+        await replaceParticipants(env,String(booking.booking_id||""),payload.participants);
+      }
+      return json({ok:true,data});
+    }
+
+    if (path === "/api/internal/booking-delete" && request.method === "POST") {
+      const payload = await readJson(request);
+      const data = await deleteBookingCascade(env, payload.bookingId || payload.booking_id);
+      return json({ok:true,data});
+    }
+
+    if (path === "/api/internal/repair-consistency" && request.method === "POST") {
+      const data = await repairBookingConsistency(env);
+      return json({ok:true,data});
+    }
+
+    if (path === "/api/internal/diagnostic" && request.method === "POST") {
+      const payload = await readJson(request);
+      const data = await diagnosticSnapshot(env,payload);
       return json({ok:true,data});
     }
 
@@ -149,7 +171,6 @@ async function handleApi(request, env, ctx, url) {
       return json({ok:true,data:{bookings:count,participants:participants.length}});
     }
 
-
     if (path === "/api/internal/pull-bookings" && request.method === "POST") {
       const payload = await readJson(request);
       const limit = Math.max(1, Math.min(500, Math.floor(num(payload.limit, 200))));
@@ -170,10 +191,7 @@ async function handleApi(request, env, ctx, url) {
         ORDER BY id DESC
         LIMIT 20
       `).all();
-      return json({ok:true,data:{
-        counts:counts.results||[],
-        recent:recent.results||[]
-      }});
+      return json({ok:true,data:{counts:counts.results||[],recent:recent.results||[]}});
     }
 
     return json({ok:false,error:"INTERNAL_ROUTE_NOT_FOUND"},404);
@@ -191,35 +209,20 @@ function requireSyncAuth(request, env) {
   if (!expected) {
     const e = new Error("AUTH_SECRET_MISSING");
     e.status = 401;
-    e.authDebug = {
-      secretPresent:false,
-      headerPresent:!!got,
-      expectedLength:0,
-      receivedLength:got.length
-    };
+    e.authDebug = {secretPresent:false,headerPresent:!!got,expectedLength:0,receivedLength:got.length};
     throw e;
   }
-
   if (!got) {
     const e = new Error("AUTH_HEADER_MISSING");
     e.status = 401;
-    e.authDebug = {
-      secretPresent:true,
-      headerPresent:false,
-      expectedLength:expected.length,
-      receivedLength:0
-    };
+    e.authDebug = {secretPresent:true,headerPresent:false,expectedLength:expected.length,receivedLength:0};
     throw e;
   }
-
   if (got !== expected) {
     const e = new Error("AUTH_TOKEN_MISMATCH");
     e.status = 401;
     e.authDebug = {
-      secretPresent:true,
-      headerPresent:true,
-      expectedLength:expected.length,
-      receivedLength:got.length,
+      secretPresent:true,headerPresent:true,expectedLength:expected.length,receivedLength:got.length,
       expectedWhitespaceTrimmed:expectedRaw.length !== expected.length,
       receivedWhitespaceTrimmed:gotRaw.length !== got.length
     };
@@ -256,6 +259,24 @@ function safeDateOnly(v){
   const s=clean(v,10);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
   return s;
+}
+function taipeiDateOnlyFromDate(d){
+  if(!(d instanceof Date) || !Number.isFinite(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US",{
+    timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"
+  }).formatToParts(d);
+  const map={};
+  for(const p of parts) if(p.type!=="literal") map[p.type]=p.value;
+  return map.year&&map.month&&map.day ? `${map.year}-${map.month}-${map.day}` : "";
+}
+function normalizeDateOnly(v){
+  if(!v)return "";
+  if(v instanceof Date)return taipeiDateOnlyFromDate(v);
+  const raw=String(v).trim();
+  // A true date-only string is already canonical and must never be timezone-shifted.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;
+  const d=new Date(raw);
+  return Number.isFinite(d.getTime())?taipeiDateOnlyFromDate(d):"";
 }
 function bookingId(lessonDate){
   const d=(safeDateOnly(lessonDate)||new Date().toISOString().slice(0,10)).replace(/-/g,"").slice(2);
@@ -332,7 +353,6 @@ function seasonPhase(date,s){
 }
 function seasonPhaseLabel(v){return ({early_low:"早鳥淡季",peak:"旺季",tail_low:"尾聲淡季"}[v]||"")}
 
-
 async function ensureBookingDaysTable(env){
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS booking_days (
@@ -364,6 +384,13 @@ function normalizeLessonDates(p,s){
   return arr;
 }
 
+function normalizeSheetLessonDates(r){
+  const raw=String(r.lesson_dates||"").split(/[，,\n\s]+/).map(x=>normalizeDateOnly(x)).filter(Boolean);
+  const fallback=normalizeDateOnly(r.lesson_date);
+  const dates=[...new Set((raw.length?raw:[fallback]).filter(Boolean))].sort().slice(0,10);
+  return dates;
+}
+
 async function lessonDatesForBooking(env,bookingId,fallbackDate){
   await ensureBookingDaysTable(env);
   const rs=await env.DB.prepare(
@@ -373,17 +400,26 @@ async function lessonDatesForBooking(env,bookingId,fallbackDate){
   return arr.length?arr:(fallbackDate?[String(fallbackDate)]:[]);
 }
 
-async function replaceBookingDays(env,bookingId,lessonDates,duration,timeSlot,createdAt,updatedAt){
+async function replaceBookingDays(env,bookingId,lessonDates,duration,timeSlot,createdAt,updatedAt,defaultCoach=""){
   await ensureBookingDaysTable(env);
+  const old=await env.DB.prepare(
+    "SELECT lesson_date,assigned_coach,second_coach FROM booking_days WHERE booking_id=?"
+  ).bind(bookingId).all();
+  const keep=new Map((old.results||[]).map(x=>[String(x.lesson_date||""),x]));
   await env.DB.prepare("DELETE FROM booking_days WHERE booking_id=?").bind(bookingId).run();
   if(!lessonDates.length)return;
   const now=updatedAt||isoNow();
   const created=createdAt||now;
-  const stmts=lessonDates.map(d=>env.DB.prepare(`
-    INSERT INTO booking_days
-      (booking_id,lesson_date,duration,time_slot,assigned_coach,second_coach,status,created_at,updated_at)
-    VALUES (?,?,?,?,?,'','ACTIVE',?,?)
-  `).bind(bookingId,d,duration,timeSlot,'',created,now));
+  const stmts=lessonDates.map(d=>{
+    const prev=keep.get(d)||{};
+    const assigned=clean(prev.assigned_coach||defaultCoach||"",120);
+    const second=clean(prev.second_coach||"",120);
+    return env.DB.prepare(`
+      INSERT INTO booking_days
+        (booking_id,lesson_date,duration,time_slot,assigned_coach,second_coach,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,'ACTIVE',?,?)
+    `).bind(bookingId,d,duration,timeSlot,assigned,second,created,now);
+  });
   await env.DB.batch(stmts);
 }
 
@@ -494,7 +530,7 @@ async function createBooking(env,p){
     throw err;
   }
 
-  await replaceBookingDays(env,id,lessonDates,duration,clean(p.timeSlot,30),now,now);
+  await replaceBookingDays(env,id,lessonDates,duration,clean(p.timeSlot,30),now,now,"");
 
   const participants=Array.isArray(p.participants)?p.participants.slice(0,c.people):[];
   if(participants.length){
@@ -606,16 +642,10 @@ async function flushSyncQueue(env,limit=20){
   for(const item of (rs.results||[])){
     try{
       const body=new URLSearchParams({
-        action:"syncFromD1",
-        token:String(env.SHEET_SYNC_TOKEN),
-        entity:String(item.entity_type),
-        payload:String(item.payload)
+        action:"syncFromD1",token:String(env.SHEET_SYNC_TOKEN),entity:String(item.entity_type),payload:String(item.payload)
       });
       const res=await fetch(String(env.GAS_SYNC_URL),{
-        method:"POST",
-        headers:{"content-type":"application/x-www-form-urlencoded;charset=UTF-8"},
-        body:body.toString(),
-        redirect:"follow"
+        method:"POST",headers:{"content-type":"application/x-www-form-urlencoded;charset=UTF-8"},body:body.toString(),redirect:"follow"
       });
       const text=await res.text();
       let ok=res.ok;
@@ -651,22 +681,12 @@ async function expireBookings(env){
   await flushSyncQueue(env,30);
 }
 
-
 async function pullBookingsForSheet(env,updatedAfter,limit){
   let rows;
   if(updatedAfter){
-    rows = await env.DB.prepare(`
-      SELECT * FROM bookings
-      WHERE updated_at >= ?
-      ORDER BY updated_at ASC
-      LIMIT ?
-    `).bind(updatedAfter,limit).all();
+    rows = await env.DB.prepare(`SELECT * FROM bookings WHERE updated_at >= ? ORDER BY updated_at ASC LIMIT ?`).bind(updatedAfter,limit).all();
   }else{
-    rows = await env.DB.prepare(`
-      SELECT * FROM bookings
-      ORDER BY updated_at ASC
-      LIMIT ?
-    `).bind(limit).all();
+    rows = await env.DB.prepare(`SELECT * FROM bookings ORDER BY updated_at ASC LIMIT ?`).bind(limit).all();
   }
 
   const bookings = rows.results || [];
@@ -678,13 +698,10 @@ async function pullBookingsForSheet(env,updatedAfter,limit){
     const placeholders = ids.map(()=>"?").join(",");
     const pr = await env.DB.prepare(`
       SELECT booking_id,participant_no,name,age,level,notes,created_at
-      FROM participants
-      WHERE booking_id IN (${placeholders})
-      ORDER BY booking_id,participant_no
+      FROM participants WHERE booking_id IN (${placeholders}) ORDER BY booking_id,participant_no
     `).bind(...ids).all();
     participants = pr.results || [];
   }
-
   const byId = new Map();
   for(const p of participants){
     const id = String(p.booking_id||"");
@@ -697,8 +714,7 @@ async function pullBookingsForSheet(env,updatedAfter,limit){
   if(ids.length){
     const placeholders = ids.map(()=>"?").join(",");
     const dr=await env.DB.prepare(`
-      SELECT booking_id,lesson_date
-      FROM booking_days
+      SELECT booking_id,lesson_date FROM booking_days
       WHERE booking_id IN (${placeholders}) AND status='ACTIVE'
       ORDER BY booking_id,lesson_date
     `).bind(...ids).all();
@@ -713,13 +729,9 @@ async function pullBookingsForSheet(env,updatedAfter,limit){
     const id=String(b.booking_id||"");
     const dates=(daysById.get(id)||[]);
     const lessonDates=dates.length?dates:[String(b.lesson_date||"")].filter(Boolean);
-    return {...b,lesson_dates:lessonDates.join(","),lesson_days_count:lessonDates.length,participants:byId.get(id)||[]};
+    return {...b,lesson_date:lessonDates[0]||b.lesson_date,lesson_dates:lessonDates.join(","),lesson_days_count:lessonDates.length,participants:byId.get(id)||[]};
   });
-  return {
-    bookings:out,
-    count:out.length,
-    lastUpdated:String(out[out.length-1]?.updated_at||"")
-  };
+  return {bookings:out,count:out.length,lastUpdated:String(out[out.length-1]?.updated_at||"")};
 }
 
 async function syncSettingsFromSheet(env,payload){
@@ -764,25 +776,26 @@ function normalizeDate(v){
   if(!v)return null;
   const d=new Date(v);return Number.isFinite(d.getTime())?d.toISOString():null;
 }
-function normalizeDateOnly(v){
-  if(!v)return "";
-  const s=String(v).slice(0,10);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
-  const d=new Date(v);return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):"";
-}
 
 async function upsertBookingFromSheet(env,b){
   const r=normalizeSheetBooking(b);
   if(!r.booking_id){const e=new Error("BOOKING_ID_REQUIRED");e.status=400;throw e;}
+  const lessonDates=normalizeSheetLessonDates(r);
+  if(!lessonDates.length){const e=new Error("LESSON_DATE_REQUIRED");e.status=400;throw e;}
+  // Canonical invariant: bookings.lesson_date is always the first active lesson day.
+  r.lesson_date=lessonDates[0];
+  r.lesson_dates=lessonDates.join(",");
   if(!ALLOWED_STATUS.has(String(r.booking_status||"")))r.booking_status="PENDING_REVIEW";
   if(!ALLOWED_PAY_STATUS.has(String(r.payment_status||"")))r.payment_status="PENDING";
   r.party_type=clean(r.party_type||"adult",20);
-  r.season_phase=clean(r.season_phase||"",30);
+  const s=await getSettings(env);
+  r.season_phase=seasonPhase(r.lesson_date,s) || clean(r.season_phase||"",30);
   r.coach_count=Math.max(1,num(r.coach_count,1));
   r.share_status=clean(r.share_status||(r.course==="share"?"AVAILABLE":"NOT_APPLICABLE"),40);
   r.share_group_id=clean(r.share_group_id||"",80)||null;
   r.bonus_hour_eligible=bool(r.bonus_hour_eligible)?1:0;
   r.bonus_hour_status=clean(r.bonus_hour_status||(r.duration==="full"?"PENDING_PAYMENT":"NOT_APPLICABLE"),50);
+
   const cols=[
     "booking_id","request_key","created_at","updated_at","booking_status","payment_status","payment_deadline","payment_submitted_at","payment_last5","paid_at",
     "contact_name","phone","email","email_norm","line_name","line_id","line_joined","line_contact_status","region","resort","lesson_date","board","course","duration","time_slot","people_count","tuition_twd",
@@ -794,21 +807,129 @@ async function upsertBookingFromSheet(env,b){
   const updateCols=cols.filter(k=>!["booking_id","request_key","created_at"].includes(k));
   const sql=`INSERT INTO bookings (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')}) ON CONFLICT(booking_id) DO UPDATE SET ${updateCols.map(k=>`${k}=excluded.${k}`).join(',')},sync_status='SYNCED'`;
   await env.DB.prepare(sql).bind(...cols.map(k=>v[k]===undefined?null:v[k])).run();
-
-  const rawDates=String(r.lesson_dates||"").split(/[，,\n\s]+/).map(x=>normalizeDateOnly(x)).filter(Boolean);
-  const lessonDates=[...new Set((rawDates.length?rawDates:[r.lesson_date]).filter(Boolean))].sort().slice(0,10);
-  if(lessonDates.length){
-    await replaceBookingDays(env,r.booking_id,lessonDates,clean(r.duration,20),clean(r.time_slot,30),r.created_at,r.updated_at);
-  }
-  return {bookingId:r.booking_id};
+  await replaceBookingDays(env,r.booking_id,lessonDates,clean(r.duration,20),clean(r.time_slot,30),r.created_at,r.updated_at,clean(r.assigned_coach,120));
+  return {bookingId:r.booking_id,lessonDate:r.lesson_date,lessonDates};
 }
 
 async function replaceParticipants(env,bookingId,rows){
   bookingId=clean(bookingId,80);
+  if(!bookingId)return;
   await env.DB.prepare("DELETE FROM participants WHERE booking_id=?").bind(bookingId).run();
   if(!rows.length)return;
   const statements=rows.slice(0,20).map((p,i)=>env.DB.prepare(
     "INSERT INTO participants (booking_id,participant_no,name,age,level,notes,created_at) VALUES (?,?,?,?,?,?,?)"
   ).bind(bookingId,num(p.participant_no,i+1),clean(p.name,120),clean(p.age,20),clean(p.level,50),clean(p.notes,500),normalizeDate(p.created_at)||isoNow()));
   await env.DB.batch(statements);
+}
+
+async function deleteBookingCascade(env,rawId){
+  const bookingId=clean(rawId,80);
+  if(!bookingId){const e=new Error("BOOKING_ID_REQUIRED");e.status=400;throw e;}
+  await ensureBookingDaysTable(env);
+  const exists=await env.DB.prepare("SELECT booking_id FROM bookings WHERE booking_id=?").bind(bookingId).first();
+  if(!exists)return {bookingId,deleted:false,alreadyMissing:true};
+
+  const counts={};
+  const d=await env.DB.prepare("SELECT COUNT(*) AS n FROM booking_days WHERE booking_id=?").bind(bookingId).first();
+  const p=await env.DB.prepare("SELECT COUNT(*) AS n FROM participants WHERE booking_id=?").bind(bookingId).first();
+  const pay=await env.DB.prepare("SELECT COUNT(*) AS n FROM payments WHERE booking_id=?").bind(bookingId).first();
+  const q=await env.DB.prepare("SELECT COUNT(*) AS n FROM sync_queue WHERE ref_id=? AND entity_type IN ('booking','payment')").bind(bookingId).first();
+  counts.bookingDays=Number(d?.n||0);counts.participants=Number(p?.n||0);counts.payments=Number(pay?.n||0);counts.syncQueue=Number(q?.n||0);
+
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM booking_days WHERE booking_id=?").bind(bookingId),
+    env.DB.prepare("DELETE FROM participants WHERE booking_id=?").bind(bookingId),
+    env.DB.prepare("DELETE FROM payments WHERE booking_id=?").bind(bookingId),
+    env.DB.prepare("DELETE FROM sync_queue WHERE ref_id=? AND entity_type IN ('booking','payment')").bind(bookingId),
+    env.DB.prepare("DELETE FROM bookings WHERE booking_id=?").bind(bookingId)
+  ]);
+  return {bookingId,deleted:true,removed:counts};
+}
+
+async function repairBookingConsistency(env){
+  await ensureBookingDaysTable(env);
+  const now=isoNow();
+  const orphanBefore=await env.DB.prepare(`SELECT COUNT(*) AS n FROM booking_days d LEFT JOIN bookings b ON b.booking_id=d.booking_id WHERE b.booking_id IS NULL`).first();
+  await env.DB.prepare(`DELETE FROM booking_days WHERE booking_id NOT IN (SELECT booking_id FROM bookings)`).run();
+
+  const missing=await env.DB.prepare(`
+    SELECT b.booking_id,b.lesson_date,b.duration,b.time_slot,b.assigned_coach,b.created_at,b.updated_at
+    FROM bookings b LEFT JOIN booking_days d ON d.booking_id=b.booking_id AND d.status='ACTIVE'
+    WHERE d.booking_id IS NULL AND b.lesson_date IS NOT NULL AND b.lesson_date<>''
+  `).all();
+  let createdDays=0;
+  for(const b of (missing.results||[])){
+    const d=normalizeDateOnly(b.lesson_date);
+    if(!d)continue;
+    await replaceBookingDays(env,b.booking_id,[d],clean(b.duration,20),clean(b.time_slot,30),b.created_at||now,b.updated_at||now,clean(b.assigned_coach,120));
+    createdDays++;
+  }
+
+  const mismatches=await env.DB.prepare(`
+    SELECT b.booking_id,d.first_date
+    FROM bookings b
+    JOIN (SELECT booking_id,MIN(lesson_date) AS first_date FROM booking_days WHERE status='ACTIVE' GROUP BY booking_id) d
+      ON d.booking_id=b.booking_id
+    WHERE b.lesson_date<>d.first_date
+  `).all();
+  const settings=await getSettings(env);
+  for(const x of (mismatches.results||[])){
+    await env.DB.prepare("UPDATE bookings SET lesson_date=?,season_phase=?,updated_at=?,sync_status='SYNCED' WHERE booking_id=?")
+      .bind(x.first_date,seasonPhase(x.first_date,settings),now,x.booking_id).run();
+  }
+  return {
+    orphanBookingDaysRemoved:Number(orphanBefore?.n||0),
+    missingBookingDaysCreated:createdDays,
+    mainDatesCorrected:(mismatches.results||[]).length
+  };
+}
+
+async function diagnosticSnapshot(env,payload={}){
+  await ensureBookingDaysTable(env);
+  const [bookings,days,participants,payments,queue,orphan,mismatch,missing,multi,queueRows]=await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM bookings").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM booking_days").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM participants").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM payments").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM sync_queue").first(),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM booking_days d LEFT JOIN bookings b ON b.booking_id=d.booking_id WHERE b.booking_id IS NULL`).first(),
+    env.DB.prepare(`
+      SELECT COUNT(*) AS n FROM bookings b
+      JOIN (SELECT booking_id,MIN(lesson_date) AS first_date FROM booking_days WHERE status='ACTIVE' GROUP BY booking_id) d
+        ON d.booking_id=b.booking_id
+      WHERE b.lesson_date<>d.first_date
+    `).first(),
+    env.DB.prepare(`
+      SELECT COUNT(*) AS n FROM bookings b
+      LEFT JOIN booking_days d ON d.booking_id=b.booking_id AND d.status='ACTIVE'
+      WHERE d.booking_id IS NULL
+    `).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM (SELECT booking_id FROM booking_days WHERE status='ACTIVE' GROUP BY booking_id HAVING COUNT(*)>1)`).first(),
+    env.DB.prepare("SELECT status,COUNT(*) AS n FROM sync_queue GROUP BY status").all()
+  ]);
+  const qmap={};for(const r of (queueRows.results||[]))qmap[String(r.status||"")]=Number(r.n||0);
+  const out={
+    version:"8.2.2",
+    counts:{bookings:Number(bookings?.n||0),bookingDays:Number(days?.n||0),participants:Number(participants?.n||0),payments:Number(payments?.n||0),syncQueue:Number(queue?.n||0)},
+    checks:{orphanBookingDays:Number(orphan?.n||0),dateMismatch:Number(mismatch?.n||0),missingBookingDays:Number(missing?.n||0),multiDayBookings:Number(multi?.n||0)},
+    queue:qmap
+  };
+  const bookingId=clean(payload.bookingId||payload.booking_id,80);
+  if(bookingId){
+    // Intentionally exclude name/email/phone/LINE/bank/last5/payload.
+    const b=await env.DB.prepare(`
+      SELECT booking_id,booking_status,payment_status,lesson_date,region,resort,board,course,duration,time_slot,people_count,assigned_coach,updated_at,sync_status
+      FROM bookings WHERE booking_id=?
+    `).bind(bookingId).first();
+    if(b){
+      const dr=await env.DB.prepare("SELECT lesson_date FROM booking_days WHERE booking_id=? AND status='ACTIVE' ORDER BY lesson_date").bind(bookingId).all();
+      const pc=await env.DB.prepare("SELECT COUNT(*) AS n FROM participants WHERE booking_id=?").bind(bookingId).first();
+      const py=await env.DB.prepare("SELECT COUNT(*) AS n FROM payments WHERE booking_id=?").bind(bookingId).first();
+      out.booking=b;
+      out.bookingDays=(dr.results||[]).map(x=>String(x.lesson_date||""));
+      out.participantCount=Number(pc?.n||0);
+      out.paymentCount=Number(py?.n||0);
+    }else out.booking=null;
+  }
+  return out;
 }

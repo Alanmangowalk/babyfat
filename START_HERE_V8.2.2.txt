@@ -1,0 +1,10 @@
+BabyFat V8.2.2 — 以目前 V8.2.1 正式部署包為基底
+
+GitHub / Cloudflare：
+直接把本資料夾內容放到 repo 根目錄，覆蓋同名檔案並 Commit main。
+最重要的更新檔：
+- src/worker.js
+- public/booking.html
+
+部署後先開 /api/health，確認 version = 8.2.2。
+確認成功後，再處理 Google Apps Script V8.2.2。

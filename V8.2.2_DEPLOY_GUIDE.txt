@@ -1,0 +1,15 @@
+BabyFat V8.2.2 Cloudflare 部署包
+
+本包以目前正式部署的 V8.2.1 ZIP 為基底，僅直接整合：
+1. src/worker.js -> V8.2.2
+2. public/booking.html -> 移除 Jared 範例姓名
+
+Cloudflare / GitHub 部分可直接用本包覆蓋目前 repo 根目錄後 Commit main。
+部署後確認：
+https://babyfatsnowteam.com/api/health
+version 應為 8.2.2。
+
+注意：V8.2.2 的 Google Apps Script 修正不在 Cloudflare 專案內。
+Worker 確認部署成功後，再到 Google Sheet 的 Apps Script 將 Code.gs 整份替換為 BABYFATGAS_V8.2.2.txt。
+
+本次 Worker 不需要新增 D1 migration。
